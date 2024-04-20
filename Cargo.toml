@@ -1,0 +1,42 @@
+[package]
+name = "wsl-usb-manager"
+version = "1.0.0"
+authors = ["Niccolò Betto <niccolo.betto@gmail.com>"]
+edition = "2021"
+
+[dependencies]
+windows-sys = { version = "0.52.0", features = [
+    "Win32_Devices_DeviceAndDriverInstallation",
+    "Win32_Devices_Usb",
+    "Win32_Foundation",
+    "Win32_Graphics_Gdi",
+    "Win32_Security",
+    "Win32_System_Diagnostics_Debug",
+    "Win32_System_Registry",
+    "Win32_System_Threading",
+    "Win32_UI_Controls",
+    "Win32_UI_Shell",
+    "Win32_UI_WindowsAndMessaging",
+] }
+native-windows-derive = "1.0.5"
+native-windows-gui = { version = "=1.0.12", default-features = false, features = [
+    "cursor",
+    "embed-resource",
+    "flexbox",
+    "frame",
+    "high-dpi",
+    "list-view",
+    "menu",
+    "message-window",
+    "notice",
+    "rich-textbox",
+    "tabs",
+    "textbox",
+    "tray-notification",
+] }
+serde = { version = "1.0.197", features = ["derive"] }
+serde_json = "1.0.115"
+
+[build-dependencies]
+embed-resource = "2.4"
+embed-manifest = "1.4"
