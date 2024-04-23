@@ -18,6 +18,11 @@ Manage connecting USB devices to WSL with an intuitive UI.
 - Bind and unbind USB devices
 - Attach and detach USB devices to WSL
 - Manage persisted devices
+- Tray icon for quick access, minimizes to tray on close
+- Lightweight:
+    - Fast startup times (less than 1 second)
+    - Low memory usage (less than 3 MB)
+    - Small binary size (less than 1 MB)
 
 
 ## Installation
