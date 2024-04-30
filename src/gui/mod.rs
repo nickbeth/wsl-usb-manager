@@ -44,6 +44,35 @@ pub fn show_multiple_instance_warning() {
     });
 }
 
+/// Shows an error message telling the user that USBIPD was not found.
+///
+/// This function is called when the app fails to find the USBIPD executable during startup.
+pub fn show_usbipd_not_found_error() {
+    nwg::message(&nwg::MessageParams {
+        title: "WSL USB Manager: USBIPD Not Found",
+        content: concat!(
+            "USBIPD was not found, please make sure that it is installed and available in the system PATH."
+        ),
+        buttons: nwg::MessageButtons::Ok,
+        icons: nwg::MessageIcons::Error,
+    });
+}
+
+/// Shows a warning message telling the user that an untested version of USBIPD was found.
+///
+/// This function is called when the app finds a version of USBIPD lower than 4.
+pub fn show_usbipd_untested_version_warning() {
+    nwg::message(&nwg::MessageParams {
+        title: "WSL USB Manager: Untested USBIPD Version",
+        content: concat!(
+            "An untested version of USBIPD was found, this app may not work correctly. ",
+            "Please install USBIPD version 4 or newer."
+        ),
+        buttons: nwg::MessageButtons::Ok,
+        icons: nwg::MessageIcons::Warning,
+    });
+}
+
 /// Shows an error message telling the user that the app failed to start.
 /// The passed message should contain details about the error that occurred.
 ///

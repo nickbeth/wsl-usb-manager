@@ -355,3 +355,12 @@ pub fn version() -> Version {
         patch: parse(2),
     }
 }
+
+/// Checks if `usbipd` is installed in the system.
+pub fn check_installed() -> bool {
+    Command::new(USBIPD_EXE)
+        .arg("--version")
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()
+        .is_ok()
+}

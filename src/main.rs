@@ -12,6 +12,16 @@ fn main() {
         return;
     }
 
+    if !usbipd::check_installed() {
+        gui::show_usbipd_not_found_error();
+        return;
+    }
+
+    if usbipd::version().major < 4 {
+        gui::show_usbipd_untested_version_warning();
+        return;
+    }
+
     let start = gui::start();
 
     if let Err(err) = start {
