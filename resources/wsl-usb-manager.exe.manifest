@@ -9,12 +9,10 @@
     </trustInfo>
 
     <assemblyIdentity
-        version="0.1.0.0"
         processorArchitecture="*"
         name="Wsl.UsbManager"
         type="win32"
     />
-    <description>A GUI interface to manage USB device passthrough to WSL.</description>
 
     <compatibility xmlns="urn:schemas-microsoft-com:compatibility.v1">
         <application>

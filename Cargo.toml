@@ -3,6 +3,7 @@ name = "wsl-usb-manager"
 version = "1.0.0"
 authors = ["Niccolò Betto <niccolo.betto@gmail.com>"]
 edition = "2021"
+license = "MIT"
 
 [dependencies]
 windows-sys = { version = "0.52.0", features = [
