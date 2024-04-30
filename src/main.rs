@@ -8,13 +8,13 @@ mod win_utils;
 fn main() {
     // Ensure that only one instance of the application is running
     if !win_utils::acquire_single_instance_lock() {
-        gui::show_multiple_instance_message();
+        gui::show_multiple_instance_warning();
         return;
     }
 
     let start = gui::start();
 
     if let Err(err) = start {
-        gui::show_start_failure_message(&err.to_string());
+        gui::show_start_failure(&err.to_string());
     }
 }

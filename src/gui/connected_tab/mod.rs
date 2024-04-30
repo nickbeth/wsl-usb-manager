@@ -317,7 +317,7 @@ impl ConnectedTab {
         };
 
         if let Err(err) = result {
-            nwg::modal_error_message(window, "WSL USB Manager", &err);
+            nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
         }
 
         self.window.set(window);

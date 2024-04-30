@@ -32,9 +32,9 @@ pub fn start() -> Result<(), nwg::NwgError> {
 /// Shows a warning message telling the user that another instance is already running.
 ///
 /// This function is called when the app fails to obtain the instance lock because one is already held.
-pub fn show_multiple_instance_message() {
+pub fn show_multiple_instance_warning() {
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager",
+        title: "WSL USB Manager: Multiple Instances Detected",
         content: concat!(
             "Another instance of the app is already running.\n",
             "Please check the system tray."
@@ -48,11 +48,11 @@ pub fn show_multiple_instance_message() {
 /// The passed message should contain details about the error that occurred.
 ///
 /// This function is called when the app fails to start the GUI.
-pub fn show_start_failure_message(error: &str) {
+pub fn show_start_failure(error: &str) {
     let content = format!(
         concat!(
-            "An error occurred while starting the app.\n",
-            "Try opening the app again or reboot the system if the issue persists.\n\n",
+            "An error occurred while starting the app, ",
+            "try opening the app again or reboot the system if the issue persists.\n\n",
             "Error:\n",
             "{}"
         ),
@@ -60,7 +60,7 @@ pub fn show_start_failure_message(error: &str) {
     );
 
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager",
+        title: "WSL USB Manager: Start Failure",
         content: &content,
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Error,

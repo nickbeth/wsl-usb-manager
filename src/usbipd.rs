@@ -324,14 +324,14 @@ where
 
 /// A `ubpidp` version struct with major, minor, and patch fields.
 #[allow(unused)]
-struct Version {
-    major: u32,
-    minor: u32,
-    patch: u32,
+pub struct Version {
+    pub major: u32,
+    pub minor: u32,
+    pub patch: u32,
 }
 
 /// Returns the version of `usbipd`, split into major, minor, and patch fields.
-fn version() -> Version {
+pub fn version() -> Version {
     let cmd = Command::new(USBIPD_EXE)
         .arg("--version")
         .creation_flags(CREATE_NO_WINDOW)
@@ -339,14 +339,13 @@ fn version() -> Version {
         .unwrap();
     let version_string = String::from_utf8(cmd.stdout).unwrap();
 
-    let version_split: Vec<_> = version_string.split('+').collect();
-    let version_parts: Vec<_> = version_split.first().unwrap().split('.').collect();
+    let version_split: Vec<&str> = version_string.split('+').collect();
+    let version_parts: Vec<&str> = version_split.first().unwrap().split('.').collect();
 
     let parse = |i| -> u32 {
         version_parts
             .get(i)
-            .unwrap_or(&"0")
-            .parse::<u32>()
+            .and_then(|part: &&str| part.parse().ok())
             .unwrap_or(0)
     };
 
