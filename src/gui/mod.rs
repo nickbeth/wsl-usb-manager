@@ -1,16 +1,21 @@
+mod auto_attach_tab;
 mod connected_tab;
 mod nwg_ext;
 mod persisted_tab;
 mod usbipd_gui;
 
+use std::{cell::RefCell, rc::Rc};
+
 use native_windows_gui as nwg;
 use nwg::NativeUi;
+
+use crate::auto_attach::AutoAttacher;
 use usbipd_gui::UsbipdGui;
 
 /// Starts the GUI and runs the event loop.
 ///
 /// This function will not return until the app is closed.
-pub fn start() -> Result<(), nwg::NwgError> {
+pub fn start(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Result<(), nwg::NwgError> {
     nwg::init()?;
 
     let mut font = nwg::Font::default();
@@ -22,7 +27,7 @@ pub fn start() -> Result<(), nwg::NwgError> {
 
     nwg::Font::set_global_default(Some(font));
 
-    let _gui = UsbipdGui::build_ui(Default::default())?;
+    let _gui = UsbipdGui::build_ui(UsbipdGui::new(auto_attacher))?;
 
     // Run the event loop
     nwg::dispatch_thread_events();

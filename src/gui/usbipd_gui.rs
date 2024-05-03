@@ -1,11 +1,18 @@
-use std::cell::Cell;
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use native_windows_derive::NwgUi;
 use native_windows_gui as nwg;
 
+use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
-use crate::win_utils::{self, DeviceNotification};
+use crate::{
+    auto_attach::AutoAttacher,
+    win_utils::{self, DeviceNotification},
+};
 
 pub(super) trait GuiTab {
     /// Initializes the tab. The root window handle is provided.
@@ -60,6 +67,12 @@ pub struct UsbipdGui {
     #[nwg_partial(parent: persisted_tab)]
     persisted_tab_content: PersistedTab,
 
+    #[nwg_control(parent: tabs_container, text: "Auto Attach")]
+    auto_attach_tab: nwg::Tab,
+
+    #[nwg_partial(parent: auto_attach_tab)]
+    auto_attach_tab_content: AutoAttachTab,
+
     // Tray icon
     #[nwg_control(icon: Some(&data.app_icon), tip: Some("WSL USB Manager"))]
     #[nwg_events(OnContextMenu: [UsbipdGui::show_tray_menu], MousePressLeftUp: [UsbipdGui::show])]
@@ -97,9 +110,23 @@ pub struct UsbipdGui {
 }
 
 impl UsbipdGui {
+    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+        Self {
+            connected_tab_content: ConnectedTab::new(auto_attacher),
+            auto_attach_tab_content: AutoAttachTab::new(auto_attacher),
+            ..Default::default()
+        }
+    }
+
     fn init(&self) {
         self.connected_tab_content.init(&self.window);
         self.persisted_tab_content.init(&self.window);
+        self.auto_attach_tab_content.init(&self.window);
+
+        // Give the connected tab a way to notify the auto attach tab that it needs to refresh
+        self.connected_tab_content
+            .auto_attach_notice
+            .set(Some(self.auto_attach_tab_content.refresh_notice.sender()));
 
         let sender = self.refresh_notice.sender();
         self.device_notification.set(
@@ -135,6 +162,7 @@ impl UsbipdGui {
     fn refresh(&self) {
         self.connected_tab_content.refresh();
         self.persisted_tab_content.refresh();
+        self.auto_attach_tab_content.refresh();
     }
 
     fn exit(&self) {

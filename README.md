@@ -19,6 +19,10 @@ Manage connecting USB devices to WSL with an intuitive UI.
 - Attach and detach USB devices to WSL
 - Manage persisted devices
 - Tray icon for quick access, minimizes to tray on close
+- Auto-attach profiles
+    - Uses `usbipd attach --auto-attach` behind the scenes
+    - Requires devices to be bound first
+    - Auto-attach profiles are reset every time the application is restarted
 - Lightweight:
     - Fast startup times (less than 1 second)
     - Low memory usage (less than 3 MB)

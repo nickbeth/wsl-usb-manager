@@ -1,6 +1,9 @@
 mod device_info;
 
-use std::cell::{Cell, RefCell};
+use std::{
+    cell::{Cell, RefCell},
+    rc::Rc,
+};
 
 use native_windows_derive::NwgPartial;
 use native_windows_gui as nwg;
@@ -12,6 +15,7 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
 use self::device_info::DeviceInfo;
+use crate::auto_attach::AutoAttacher;
 use crate::gui::{
     nwg_ext::{BitmapEx, MenuItemEx},
     usbipd_gui::GuiTab,
@@ -25,13 +29,18 @@ const PADDING_LEFT: Rect<D> = Rect {
     bottom: D::Points(0.0),
 };
 
-const DETAILS_PANEL_WIDTH: f32 = 260.0;
+const DETAILS_PANEL_WIDTH: f32 = 285.0;
 const DETAILS_PANEL_PADDING: u32 = 4;
 
 #[derive(Default, NwgPartial)]
 pub struct ConnectedTab {
+    auto_attacher: Rc<RefCell<AutoAttacher>>,
+
     window: Cell<nwg::ControlHandle>,
     shield_bitmap: Cell<nwg::Bitmap>,
+
+    /// A notice sender to notify the auto attach tab to refresh
+    pub auto_attach_notice: Cell<Option<nwg::NoticeSender>>,
 
     connected_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
@@ -86,6 +95,11 @@ pub struct ConnectedTab {
     #[nwg_events(OnButtonClick: [ConnectedTab::bind_unbind_device])]
     bind_unbind_button: nwg::Button,
 
+    #[nwg_control(parent: buttons_frame, text: "Auto Attach")]
+    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
+    #[nwg_events(OnButtonClick: [ConnectedTab::auto_attach_device])]
+    auto_attach_button: nwg::Button,
+
     // Device context menu
     #[nwg_control(text: "Device", popup: true)]
     menu: nwg::Menu,
@@ -115,6 +129,13 @@ pub struct ConnectedTab {
 }
 
 impl ConnectedTab {
+    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+        Self {
+            auto_attacher: auto_attacher.clone(),
+            ..Default::default()
+        }
+    }
+
     fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
@@ -124,7 +145,7 @@ impl ConnectedTab {
         dv.set_headers_enabled(true);
 
         dv.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
-        dv.set_column_width(1, 440);
+        dv.set_column_width(1, 415);
         dv.set_column_width(2, LVSCW_AUTOSIZE_USEHEADER as isize);
     }
 
@@ -156,11 +177,13 @@ impl ConnectedTab {
         if let Some(device) = device {
             if device.is_bound() {
                 self.bind_unbind_button.set_text("Unbind");
+                self.auto_attach_button.set_enabled(true);
 
                 // Attaching a bound device doesn't require admin privileges, hide the UAC shield icon
                 self.attach_detach_button.set_bitmap(None);
             } else {
                 self.bind_unbind_button.set_text("Bind");
+                self.auto_attach_button.set_enabled(false);
 
                 // Attaching an unbound device requires admin privileges, show the UAC shield icon
                 let shield_bitmap = self.shield_bitmap.take();
@@ -181,6 +204,7 @@ impl ConnectedTab {
             self.bind_unbind_button.set_text("Bind");
             self.attach_detach_button.set_bitmap(None);
 
+            self.auto_attach_button.set_enabled(false);
             self.bind_unbind_button.set_enabled(false);
             self.attach_detach_button.set_enabled(false);
         }
@@ -285,13 +309,25 @@ impl ConnectedTab {
         });
     }
 
+    fn auto_attach_device(&self) {
+        self.run_command(|device| {
+            self.auto_attacher.borrow_mut().add_device(device)?;
+
+            let auto_attach_notice = self.auto_attach_notice.get().unwrap();
+            auto_attach_notice.notice();
+            self.auto_attach_notice.set(Some(auto_attach_notice));
+
+            Ok(())
+        });
+    }
+
     /// Runs a `command` function on the currently selected device.
     /// No-op if no device is selected.
     ///
     /// If the command completes successfully, the view is reloaded.
     ///
     /// If an error occurs, an error dialog is shown.
-    fn run_command(&self, command: fn(&UsbDevice) -> Result<(), String>) {
+    fn run_command(&self, command: impl Fn(&UsbDevice) -> Result<(), String>) {
         let window = self.window.get();
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);

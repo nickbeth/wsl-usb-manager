@@ -1,9 +1,14 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg(target_os = "windows")]
 
+mod auto_attach;
 mod gui;
 mod usbipd;
 mod win_utils;
+
+use std::{cell::RefCell, rc::Rc};
+
+use auto_attach::AutoAttacher;
 
 fn main() {
     // Ensure that only one instance of the application is running
@@ -22,7 +27,9 @@ fn main() {
         return;
     }
 
-    let start = gui::start();
+    let auto_attacher = Rc::new(RefCell::new(AutoAttacher::new()));
+
+    let start = gui::start(&auto_attacher);
 
     if let Err(err) = start {
         gui::show_start_failure(&err.to_string());

@@ -207,6 +207,29 @@ impl UsbDevice {
         usbipd(&args)
     }
 
+    /// Spawns a process running the auto-attach loop for the device and
+    /// returns its handle.
+    ///
+    /// The device **must** be bound before auto-attaching it.
+    pub fn auto_attach(&self) -> Result<std::process::Child, String> {
+        let bus_id = self
+            .bus_id
+            .as_deref()
+            .ok_or("The device does not have a bus ID.".to_owned())?;
+
+        let args = if version().major < 4 {
+            ["wsl", "attach", "--auto-attach", "--busid", bus_id].to_vec()
+        } else {
+            ["attach", "--wsl", "--auto-attach", "--busid", bus_id].to_vec()
+        };
+
+        Command::new(USBIPD_EXE)
+            .args(args)
+            .creation_flags(CREATE_NO_WINDOW)
+            .spawn()
+            .map_err(|err| err.to_string())
+    }
+
     /// Waits until `wait_cond` is satisfied for the device.
     ///
     /// `wait_cond` receives an optional reference to the updated device.
