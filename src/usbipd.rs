@@ -179,6 +179,7 @@ impl UsbDevice {
 
         if !self.is_bound() {
             self.bind(false)?;
+            self.wait(|d| d.is_some_and(|d| d.is_bound()))?;
         }
 
         let args = if version().major < 4 {
