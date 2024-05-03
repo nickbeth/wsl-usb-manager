@@ -1,4 +1,4 @@
-mod profile_info;
+mod persisted_info;
 
 use std::cell::{Cell, RefCell};
 
@@ -10,7 +10,7 @@ use nwg::stretch::{
 };
 use windows_sys::Win32::UI::{Controls::LVSCW_AUTOSIZE_USEHEADER, Shell::SIID_SHIELD};
 
-use self::profile_info::ProfileInfo;
+use self::persisted_info::PersistedInfo;
 use crate::gui::{
     nwg_ext::{BitmapEx, MenuItemEx},
     usbipd_gui::GuiTab,
@@ -42,12 +42,12 @@ pub struct PersistedTab {
         ex_flags: nwg::ListViewExFlags::FULL_ROW_SELECT,
     )]
     #[nwg_events(OnListViewRightClick: [PersistedTab::show_menu],
-        OnListViewItemChanged: [PersistedTab::update_profile_details]
+        OnListViewItemChanged: [PersistedTab::update_persisted_details]
     )]
     #[nwg_layout_item(layout: persisted_tab_layout, flex_grow: 1.0)]
     list_view: nwg::ListView,
 
-    // Profile info
+    // Persisted info
     #[nwg_control]
     #[nwg_layout_item(layout: persisted_tab_layout, margin: PADDING_LEFT,
         size: Size { width: D::Points(DETAILS_PANEL_WIDTH), height: D::Auto },
@@ -62,10 +62,10 @@ pub struct PersistedTab {
     #[nwg_layout_item(layout: details_layout, flex_grow: 1.0)]
     // Multi-line RichLabels send a WM_CLOSE message when the ESC key is pressed
     #[nwg_events(OnWindowClose: [PersistedTab::inhibit_close(EVT_DATA)])]
-    profile_info_frame: nwg::Frame,
+    persisted_info_frame: nwg::Frame,
 
-    #[nwg_partial(parent: profile_info_frame)]
-    profile_info: ProfileInfo,
+    #[nwg_partial(parent: persisted_info_frame)]
+    persisted_info: PersistedInfo,
 
     // Buttons
     #[nwg_control(parent: details_frame, flags: "VISIBLE")]
@@ -93,7 +93,7 @@ impl PersistedTab {
     fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
-        dv.insert_column("Profile");
+        dv.insert_column("Device");
         dv.set_headers_enabled(true);
 
         // Auto-size before adding items to ensure we don't overflow the list view
@@ -113,8 +113,8 @@ impl PersistedTab {
         }
     }
 
-    /// Updates the profile details panel with the currently selected device.
-    fn update_profile_details(&self) {
+    /// Updates the details panel with the currently selected device.
+    fn update_persisted_details(&self) {
         let devices = self.persisted_devices.borrow();
         let device = self.list_view.selected_item().and_then(|i| devices.get(i));
 
@@ -124,7 +124,7 @@ impl PersistedTab {
             self.delete_button.set_enabled(false);
         }
 
-        self.profile_info.update(device);
+        self.persisted_info.update(device);
     }
 
     fn show_menu(&self) {
@@ -218,6 +218,6 @@ impl GuiTab for PersistedTab {
 
     fn refresh(&self) {
         self.refresh_list();
-        self.update_profile_details();
+        self.update_persisted_details();
     }
 }
