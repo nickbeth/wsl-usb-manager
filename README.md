@@ -59,5 +59,5 @@ If you encounter any issues, please open a [GitHub issue](https://github.com/lyn
 
 <div align="left">
     <img width="49%" src="img/connected_devices.png"/> <img width="49%" src="img/persisted_devices.png"/>
-    <img width="49%" src="img/device_context_menu.png"/>
+    <img width="49%" src="img/auto_attach.png"/> <img width="49%" align="top" src="img/device_context_menu.png"/>
 </div>
