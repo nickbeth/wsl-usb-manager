@@ -51,16 +51,22 @@ impl Display for UsbipState {
 pub struct UsbDevice {
     #[serde(rename = "BusId")]
     pub bus_id: Option<String>,
+
     #[serde(rename = "ClientIPAddress")]
     pub client_ip_address: Option<String>,
+
     #[serde(rename = "Description")]
     pub description: Option<String>,
+
     #[serde(rename = "InstanceId")]
     pub instance_id: Option<String>,
+
     #[serde(rename = "IsForced")]
     pub is_forced: bool,
+
     #[serde(rename = "PersistedGuid")]
     pub persisted_guid: Option<String>,
+
     #[serde(rename = "StubInstanceGuid")]
     pub stub_instance_id: Option<String>,
 }

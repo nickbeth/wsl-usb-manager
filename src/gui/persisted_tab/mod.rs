@@ -11,11 +11,11 @@ use nwg::stretch::{
 use windows_sys::Win32::UI::{Controls::LVSCW_AUTOSIZE_USEHEADER, Shell::SIID_SHIELD};
 
 use self::profile_info::ProfileInfo;
-use crate::gui::nwg_ext::BitmapEx;
-use crate::gui::usbipd_gui::GuiTab;
+use crate::gui::{
+    nwg_ext::{BitmapEx, MenuItemEx},
+    usbipd_gui::GuiTab,
+};
 use crate::usbipd::{self, UsbDevice};
-
-use super::nwg_ext::MenuItemEx;
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),
@@ -78,7 +78,7 @@ pub struct PersistedTab {
     #[nwg_control(parent: buttons_frame, text: "Delete")]
     #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
     #[nwg_events(OnButtonClick: [PersistedTab::delete])]
-    pub delete_button: nwg::Button,
+    delete_button: nwg::Button,
 
     // Device context menu
     #[nwg_control(text: "Device", popup: true)]
@@ -90,7 +90,7 @@ pub struct PersistedTab {
 }
 
 impl PersistedTab {
-    fn init_device_list(&self) {
+    fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
         dv.insert_column("Profile");
@@ -101,7 +101,7 @@ impl PersistedTab {
     }
 
     /// Clears the device list and reloads it with the currently persisted devices.
-    fn refresh_device_list(&self) {
+    fn refresh_list(&self) {
         self.update_devices();
 
         self.list_view.clear();
@@ -212,12 +212,12 @@ impl GuiTab for PersistedTab {
 
         self.shield_bitmap.set(shield_bitmap);
 
-        self.init_device_list();
+        self.init_list();
         self.refresh();
     }
 
     fn refresh(&self) {
-        self.refresh_device_list();
+        self.refresh_list();
         self.update_profile_details();
     }
 }

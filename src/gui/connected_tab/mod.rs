@@ -12,8 +12,10 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
 use self::device_info::DeviceInfo;
-use crate::gui::nwg_ext::{BitmapEx, MenuItemEx};
-use crate::gui::usbipd_gui::GuiTab;
+use crate::gui::{
+    nwg_ext::{BitmapEx, MenuItemEx},
+    usbipd_gui::GuiTab,
+};
 use crate::usbipd::{self, UsbDevice};
 
 const PADDING_LEFT: Rect<D> = Rect {
@@ -77,12 +79,12 @@ pub struct ConnectedTab {
     #[nwg_control(parent: buttons_frame, text: "Attach")]
     #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
     #[nwg_events(OnButtonClick: [ConnectedTab::attach_detach_device])]
-    pub attach_detach_button: nwg::Button,
+    attach_detach_button: nwg::Button,
 
     #[nwg_control(parent: buttons_frame, text: "Bind")]
     #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
     #[nwg_events(OnButtonClick: [ConnectedTab::bind_unbind_device])]
-    pub bind_unbind_button: nwg::Button,
+    bind_unbind_button: nwg::Button,
 
     // Device context menu
     #[nwg_control(text: "Device", popup: true)]
@@ -113,7 +115,7 @@ pub struct ConnectedTab {
 }
 
 impl ConnectedTab {
-    fn init_device_list(&self) {
+    fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
         dv.insert_column("Bus ID");
@@ -127,7 +129,7 @@ impl ConnectedTab {
     }
 
     /// Clears the device list and reloads it with the currently connected devices.
-    fn refresh_device_list(&self) {
+    fn refresh_list(&self) {
         self.update_devices();
 
         self.list_view.clear();
@@ -354,12 +356,12 @@ impl GuiTab for ConnectedTab {
 
         self.shield_bitmap.set(shield_bitmap);
 
-        self.init_device_list();
+        self.init_list();
         self.refresh();
     }
 
     fn refresh(&self) {
-        self.refresh_device_list();
+        self.refresh_list();
         self.update_device_details();
     }
 }

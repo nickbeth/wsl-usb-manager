@@ -63,6 +63,7 @@ pub fn get_last_error_string() -> String {
 pub fn register_usb_device_notifications(
     callback: impl Fn() + 'static,
 ) -> Result<DeviceNotification, u32> {
+    // The callback function that will be called by the system, which will then call the user's closure
     extern "system" fn callback_impl(
         _hnotify: HCMNOTIFICATION,
         context: *const std::ffi::c_void,
