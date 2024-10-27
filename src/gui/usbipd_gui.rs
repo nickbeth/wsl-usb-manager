@@ -9,6 +9,7 @@ use native_windows_gui as nwg;
 use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
+use crate::usbipd::UsbDevice;
 use crate::{
     auto_attach::AutoAttacher,
     win_utils::{self, DeviceNotification},
@@ -25,6 +26,7 @@ pub(super) trait GuiTab {
 #[derive(Default, NwgUi)]
 pub struct UsbipdGui {
     device_notification: Cell<DeviceNotification>,
+    menu_tray_event_handler: RefCell<Option<nwg::EventHandler>>,
 
     #[nwg_resource]
     embed: nwg::EmbedResource,
@@ -75,37 +77,22 @@ pub struct UsbipdGui {
 
     // Tray icon
     #[nwg_control(icon: Some(&data.app_icon), tip: Some("WSL USB Manager"))]
-    #[nwg_events(OnContextMenu: [UsbipdGui::show_tray_menu], MousePressLeftUp: [UsbipdGui::show])]
+    #[nwg_events(OnContextMenu: [UsbipdGui::show_menu_tray(RC_SELF)], MousePressLeftUp: [UsbipdGui::show(RC_SELF)])]
     tray: nwg::TrayNotification,
-
-    // Tray menu
-    #[nwg_control(parent: window, popup: true)]
-    menu_tray: nwg::Menu,
-
-    #[nwg_control(parent: menu_tray, text: "Open")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::show])]
-    menu_tray_open: nwg::MenuItem,
-
-    #[nwg_control(parent: menu_tray)]
-    menu_tray_sep: nwg::MenuSeparator,
-
-    #[nwg_control(parent: menu_tray, text: "Exit")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit])]
-    menu_tray_exit: nwg::MenuItem,
 
     // File menu
     #[nwg_control(parent: window, text: "File", popup: false)]
     menu_file: nwg::Menu,
 
     #[nwg_control(parent: menu_file, text: "Refresh")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::refresh])]
+    #[nwg_events(OnMenuItemSelected: [UsbipdGui::refresh(RC_SELF)])]
     menu_file_refresh: nwg::MenuItem,
 
     #[nwg_control(parent: menu_file)]
     menu_file_sep1: nwg::MenuSeparator,
 
     #[nwg_control(parent: menu_file, text: "Exit")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit])]
+    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit()])]
     menu_file_exit: nwg::MenuItem,
 }
 
@@ -150,22 +137,120 @@ impl UsbipdGui {
         self.window.set_visible(false);
     }
 
-    fn show(&self) {
+    fn show(self: &Rc<UsbipdGui>) {
         self.window.set_visible(true);
     }
 
-    fn show_tray_menu(&self) {
+    fn show_menu_tray(self: &Rc<UsbipdGui>) {
+        if let Some(handler) = self.menu_tray_event_handler.borrow().as_ref() {
+            nwg::unbind_event_handler(handler);
+        }
+
+        let mut menu_tray = nwg::Menu::default();
+        nwg::Menu::builder()
+            .popup(true)
+            .parent(self.window.handle)
+            .build(&mut menu_tray)
+            .unwrap();
+
+        let devices = self
+            .connected_tab_content
+            .connected_devices
+            .borrow()
+            .iter()
+            .cloned()
+            .collect::<Vec<_>>();
+
+        let mut menu_items: Vec<(nwg::MenuItem, Rc<UsbDevice>)> = Vec::with_capacity(devices.len());
+        for device in devices {
+            let device_name = device.description.as_deref();
+            let vid_pid = device.vid_pid();
+            let description = device_name.map(|s| s.to_string()).unwrap_or(
+                vid_pid
+                    .clone()
+                    .unwrap_or_else(|| "Unknown Device".to_string()),
+            );
+
+            if device.is_bound() {
+                let menu_item = self
+                    .new_menu_item(menu_tray.handle, &description, device.is_attached())
+                    .unwrap();
+
+                menu_items.push((menu_item, Rc::new(device.clone())));
+            }
+        }
+
+        self.new_menu_separator(menu_tray.handle).unwrap();
+        let open_item = self.new_menu_item(menu_tray.handle, "Open", false).unwrap();
+        self.new_menu_separator(menu_tray.handle).unwrap();
+        let exit_item = self.new_menu_item(menu_tray.handle, "Exit", false).unwrap();
+
+        let rc_self_weak = Rc::downgrade(&self);
+        *self.menu_tray_event_handler.borrow_mut() = Some(nwg::full_bind_event_handler(
+            &self.window.handle,
+            move |evt, _evt_data, handle| {
+                if let Some(rc_self) = rc_self_weak.upgrade() {
+                    match evt {
+                        nwg::Event::OnMenuItemSelected => {
+                            if handle == open_item.handle {
+                                UsbipdGui::show(&rc_self);
+                            } else if handle == exit_item.handle {
+                                UsbipdGui::exit();
+                            } else {
+                                for (menu_item, device) in menu_items.iter() {
+                                    if handle == menu_item.handle {
+                                        if device.is_attached() {
+                                            device.detach().ok();
+                                        } else {
+                                            device.attach().ok();
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                        _ => (),
+                    }
+                }
+            },
+        ));
+
         let (x, y) = nwg::GlobalCursor::position();
-        self.menu_tray.popup(x, y);
+        menu_tray.popup(x, y);
     }
 
-    fn refresh(&self) {
+    fn new_menu_item(
+        self: &Rc<UsbipdGui>,
+        parent: nwg::ControlHandle,
+        text: &str,
+        check: bool,
+    ) -> Result<nwg::MenuItem, nwg::NwgError> {
+        let mut menu_item = nwg::MenuItem::default();
+        nwg::MenuItem::builder()
+            .text(text)
+            .parent(parent)
+            .check(check)
+            .build(&mut menu_item)
+            .map(|_| menu_item)
+    }
+
+    fn new_menu_separator(
+        self: &Rc<UsbipdGui>,
+        parent: nwg::ControlHandle,
+    ) -> Result<nwg::MenuSeparator, nwg::NwgError> {
+        let mut sep = nwg::MenuSeparator::default();
+        nwg::MenuSeparator::builder()
+            .parent(parent)
+            .build(&mut sep)
+            .map(|_| sep)
+    }
+
+    fn refresh(self: &Rc<UsbipdGui>) {
         self.connected_tab_content.refresh();
         self.persisted_tab_content.refresh();
         self.auto_attach_tab_content.refresh();
     }
 
-    fn exit(&self) {
+    fn exit() {
         nwg::stop_thread_dispatch();
     }
 }
