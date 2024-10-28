@@ -1,0 +1,28 @@
+name: Lint
+
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+    branches:
+      - master
+
+jobs:
+  rustfmt:
+    name: Check Rust formatting
+    runs-on: ubuntu-latest  # OK to run from Linux since it doesn't need to build the code
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - run: cargo fmt --all --check
+
+  clippy:
+    name: Check Clippy
+    runs-on: windows-latest  # required to build on Windows due to Windows-only dependencies
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - run: cargo clippy --all-features
