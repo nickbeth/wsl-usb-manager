@@ -1,0 +1,108 @@
+<!-- Copyright (c) 2024 JP Hutchins -->
+<!-- SPDX-License-Identifier: MIT -->
+
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
+    xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+
+    <Package Name="$(env.PRODUCT_NAME)"
+        Manufacturer="$(env.COMPANY_NAME)"
+        Version="$(env.VERSION)"
+        UpgradeCode="b958955b-2aef-4047-9319-642cb9c57b17"
+        ProductCode="*"
+        Language="1033"  
+        Codepage="1252"
+        InstallerVersion="450">
+
+        <MajorUpgrade DowngradeErrorMessage="A newer version of [ProductName] is already installed" />
+
+        <Media Id="1"
+            Cabinet="media1.cab"
+            EmbedCab="yes"
+            DiskPrompt="CD-ROM #1" />
+        <Property Id="DiskPrompt"
+            Value="$(env.PRODUCT_NAME) Installation" />
+
+        <Icon Id="Icon"
+            SourceFile="../resources/wsl-usb-manager.ico" />
+        <Property Id="ARPPRODUCTICON"
+            Value="Icon" />
+
+        <Feature Id="Main"
+            Title="$(env.PRODUCT_NAME)"
+            Description="Installs all application files."
+            Level="1"
+            ConfigurableDirectory="APPLICATIONFOLDER"
+            AllowAdvertise="no"
+            Display="expand"
+            AllowAbsent="no">
+
+            <ComponentGroupRef Id="HarvestedComponents"/>
+
+            <Feature Id="StartMenuFolderFeature"
+                Title="Start Menu Folder"
+                Description="Add $(env.PRODUCT_NAME) to the Start Menu."
+                Level="1">
+                <ComponentRef Id="ProgramMenuShortcuts" />
+            </Feature>
+        </Feature>
+
+        <UI>
+            <ui:WixUI Id="WixUI_FeatureTree" />
+            <Publish Dialog="WelcomeDlg"
+                Control="Next"
+                Event="NewDialog"
+                Value="CustomizeDlg"
+                Order="99" />
+            <Publish Dialog="CustomizeDlg"
+                Control="Back"
+                Event="NewDialog"
+                Value="WelcomeDlg"
+                Order="99" />
+        </UI>
+
+        <StandardDirectory Id="ProgramFiles6432Folder">
+            <Directory Id="APPLICATIONFOLDER"
+                Name="$(env.PRODUCT_NAME)">
+            </Directory>
+        </StandardDirectory>
+
+        <WixVariable Id="WixUIBannerBmp"
+            Value="WixUIBannerBmp.png" />
+
+        <WixVariable Id="WixUIDialogBmp"
+            Value="WixUIDialogBmp.png" />
+
+
+        <StandardDirectory Id="ProgramMenuFolder">
+            <Directory Id="ProgramMenuDirFolder"
+                Name="$(env.PRODUCT_NAME)">
+                <Component Id="ProgramMenuShortcuts"
+                    Guid="97faee7a-2d17-4394-9869-2c9669ef2afe">
+                    <Shortcut Id="UninstallProduct"
+                        Name="Uninstall $(env.PRODUCT_NAME)"
+                        Description="Uninstalls $(env.PRODUCT_NAME)"
+                        Target="[System64Folder]msiexec.exe"
+                        Arguments="/x [ProductCode]"
+                        Directory="ProgramMenuDirFolder"
+                        Show="normal" />
+                    <Shortcut Id="Shortcut"
+                        Name="WSL USB Manager"
+                        Description="Start WSL USB Manager"
+                        Target="[APPLICATIONFOLDER]$(env.EXE_NAME)"
+                        Directory="ProgramMenuDirFolder"
+                        Show="normal" />
+                    <RemoveFolder Id="ProgramMenuDirFolder"
+                        On="uninstall" />
+                    <RegistryValue Root="HKCU"
+                        Key="Software\[Manufacturer]\[ProductName]"
+                        Name="installed"
+                        Type="integer"
+                        Value="1"
+                        KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+    </Package>
+
+</Wix>

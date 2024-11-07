@@ -1,0 +1,25 @@
+<!-- Copyright (c) 2024 JP Hutchins -->
+<!-- SPDX-License-Identifier: MIT -->
+
+<Project Sdk="WixToolset.Sdk/4.0.4">
+    <PropertyGroup>
+        <DefineConstants> ApplicationFiles=$(PORTABLE_PATH)/
+        </DefineConstants>
+        <OutputName>$(MSI_NAME)</OutputName>
+    </PropertyGroup>
+
+    <ItemGroup>
+        <PackageReference Include="WixToolset.Heat" Version="4.0.4" />
+        <PackageReference Include="WixToolset.UI.wixext" Version="4.0.4" />
+    </ItemGroup>
+
+    <ItemGroup>
+        <HarvestDirectory Include="$(PORTABLE_PATH)/">
+            <ComponentGroupName>HarvestedComponents</ComponentGroupName>
+            <DirectoryRefId>APPLICATIONFOLDER</DirectoryRefId>
+            <SuppressRootDirectory>true</SuppressRootDirectory>
+            <SuppressRegistry>true</SuppressRegistry>
+            <PreprocessorVariable>var.ApplicationFiles</PreprocessorVariable>
+        </HarvestDirectory>
+    </ItemGroup>
+</Project>
