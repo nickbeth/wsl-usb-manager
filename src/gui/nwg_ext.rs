@@ -83,7 +83,7 @@ impl BitmapEx for nwg::Bitmap {
             };
 
             // Ugly hack to set the private `owned` field inside nwg::Bitmap to true
-            unsafe { std::mem::transmute(bitmap) }
+            unsafe { std::mem::transmute::<Bitmap, nwg::Bitmap>(bitmap) }
         }
     }
 }
