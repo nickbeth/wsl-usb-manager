@@ -113,8 +113,7 @@ dependencies = [
 [[package]]
 name = "native-windows-gui"
 version = "1.0.12"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c1e049bccae62e28782c5eff82e0c8a4dace50b9783fe03b95447fef3172bb89"
+source = "git+https://github.com/nickbeth/native-windows-gui.git?branch=transmute-ub-1.0.12#088783c7c18fa1506484a38e3d7a489c48165007"
 dependencies = [
  "bitflags",
  "lazy_static",
