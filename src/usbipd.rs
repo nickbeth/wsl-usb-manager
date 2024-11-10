@@ -67,6 +67,7 @@ pub struct UsbDevice {
     #[serde(rename = "PersistedGuid")]
     pub persisted_guid: Option<String>,
 
+    #[allow(dead_code)]
     #[serde(rename = "StubInstanceGuid")]
     pub stub_instance_id: Option<String>,
 }
