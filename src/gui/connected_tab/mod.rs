@@ -42,7 +42,7 @@ pub struct ConnectedTab {
     /// A notice sender to notify the auto attach tab to refresh
     pub auto_attach_notice: Cell<Option<nwg::NoticeSender>>,
 
-    pub connected_devices: RefCell<Vec<usbipd::UsbDevice>>,
+    connected_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
     #[nwg_layout(flex_direction: FlexDirection::Row)]
     connected_tab_layout: nwg::FlexboxLayout,
