@@ -142,6 +142,10 @@ impl UsbipdGui {
     }
 
     fn show_menu_tray(self: &Rc<UsbipdGui>) {
+        // This prevents a memory leak in which the event handler closure is
+        // kept alive after the menu is destroyed. An attempt was made to unbind
+        // from the OnMenuExit event, but it seems to prevent the menu event
+        // handlers from running at all.
         if let Some(handler) = self.menu_tray_event_handler.take() {
             nwg::unbind_event_handler(&handler);
         }
