@@ -196,40 +196,40 @@ impl UsbipdGui {
             .unwrap();
 
         let rc_self_weak = Rc::downgrade(self);
-        self.menu_tray_event_handler
-            .replace(Some(nwg::full_bind_event_handler(
-                &self.window.handle,
-                move |evt, _evt_data, handle| {
-                    if let Some(rc_self) = rc_self_weak.upgrade() {
-                        if evt == nwg::Event::OnMenuItemSelected {
-                            if handle == open_item.handle {
-                                UsbipdGui::show(rc_self.as_ref());
-                            } else if handle == exit_item.handle {
-                                UsbipdGui::exit();
-                            } else {
-                                for (menu_item, device) in menu_items.iter() {
-                                    if handle == menu_item.handle {
-                                        if device.is_attached() {
-                                            // Silently ignore errors here, as the device may have been unplugged
-                                            // which will have detached it
-                                            device.detach().ok();
-                                        } else {
-                                            device.attach().map_err(|e| {
-                                                nwg::modal_error_message(
-                                                    rc_self.window.handle,
-                                                    "WSL USB Manager: Attach Error",
-                                                    format!("Could not attach device, is it still plugged in?\n\n{}", e)
-                                                        .as_str(),
-                                                );
-                                            }).ok();
-                                        }
+        let handler = nwg::full_bind_event_handler(
+            &self.window.handle,
+            move |evt, _evt_data, handle| {
+                if let Some(rc_self) = rc_self_weak.upgrade() {
+                    if evt == nwg::Event::OnMenuItemSelected {
+                        if handle == open_item.handle {
+                            UsbipdGui::show(rc_self.as_ref());
+                        } else if handle == exit_item.handle {
+                            UsbipdGui::exit();
+                        } else {
+                            for (menu_item, device) in menu_items.iter() {
+                                if handle == menu_item.handle {
+                                    if device.is_attached() {
+                                        // Silently ignore errors here, as the device may have been unplugged
+                                        // which will have detached it
+                                        device.detach().ok();
+                                    } else {
+                                        device.attach().map_err(|e| {
+                                            nwg::modal_error_message(
+                                                rc_self.window.handle,
+                                                "WSL USB Manager: Attach Error",
+                                                format!("Could not attach device, is it still plugged in?\n\n{}", e)
+                                                    .as_str(),
+                                            );
+                                        }).ok();
                                     }
                                 }
                             }
                         }
                     }
-                },
-            )));
+                }
+            },
+        );
+        self.menu_tray_event_handler.replace(Some(handler));
 
         let (x, y) = nwg::GlobalCursor::position();
         menu_tray.popup(x, y);
