@@ -201,9 +201,18 @@ impl UsbipdGui {
                                 for (menu_item, device) in menu_items.iter() {
                                     if handle == menu_item.handle {
                                         if device.is_attached() {
+                                            // Silently ignore errors here, as the device may have been unplugged
+                                            // which will have detached it
                                             device.detach().ok();
                                         } else {
-                                            device.attach().ok();
+                                            device.attach().map_err(|e| {
+                                                nwg::modal_error_message(
+                                                    rc_self.window.handle,
+                                                    "WSL USB Manager: Attach Error",
+                                                    format!("Could not attach device, is it still plugged in?\n\n{}", e)
+                                                        .as_str(),
+                                                );
+                                            }).ok();
                                         }
                                     }
                                 }
