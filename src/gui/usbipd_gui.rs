@@ -174,17 +174,26 @@ impl UsbipdGui {
 
             if device.is_bound() {
                 let menu_item = self
-                    .new_menu_item(menu_tray.handle, &description, device.is_attached())
+                    .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
                     .unwrap();
 
                 menu_items.push((menu_item, device));
             }
         }
 
+        if menu_items.is_empty() {
+            self.new_menu_item(menu_tray.handle, "No bound devices", true, false)
+                .unwrap();
+        };
+
         self.new_menu_separator(menu_tray.handle).unwrap();
-        let open_item = self.new_menu_item(menu_tray.handle, "Open", false).unwrap();
+        let open_item = self
+            .new_menu_item(menu_tray.handle, "Open", false, false)
+            .unwrap();
         self.new_menu_separator(menu_tray.handle).unwrap();
-        let exit_item = self.new_menu_item(menu_tray.handle, "Exit", false).unwrap();
+        let exit_item = self
+            .new_menu_item(menu_tray.handle, "Exit", false, false)
+            .unwrap();
 
         let rc_self_weak = Rc::downgrade(self);
         self.menu_tray_event_handler
@@ -230,11 +239,13 @@ impl UsbipdGui {
         &self,
         parent: nwg::ControlHandle,
         text: &str,
+        disabled: bool,
         check: bool,
     ) -> Result<nwg::MenuItem, nwg::NwgError> {
         let mut menu_item = nwg::MenuItem::default();
         nwg::MenuItem::builder()
             .text(text)
+            .disabled(disabled)
             .parent(parent)
             .check(check)
             .build(&mut menu_item)
