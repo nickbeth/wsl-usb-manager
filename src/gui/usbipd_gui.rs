@@ -9,6 +9,7 @@ use native_windows_gui as nwg;
 use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
+use crate::usbipd::{list_devices, UsbDevice};
 use crate::{
     auto_attach::AutoAttacher,
     win_utils::{self, DeviceNotification},
@@ -25,6 +26,7 @@ pub(super) trait GuiTab {
 #[derive(Default, NwgUi)]
 pub struct UsbipdGui {
     device_notification: Cell<DeviceNotification>,
+    menu_tray_event_handler: Cell<Option<nwg::EventHandler>>,
 
     #[nwg_resource]
     embed: nwg::EmbedResource,
@@ -75,23 +77,8 @@ pub struct UsbipdGui {
 
     // Tray icon
     #[nwg_control(icon: Some(&data.app_icon), tip: Some("WSL USB Manager"))]
-    #[nwg_events(OnContextMenu: [UsbipdGui::show_tray_menu], MousePressLeftUp: [UsbipdGui::show])]
+    #[nwg_events(OnContextMenu: [UsbipdGui::show_menu_tray], MousePressLeftUp: [UsbipdGui::show])]
     tray: nwg::TrayNotification,
-
-    // Tray menu
-    #[nwg_control(parent: window, popup: true)]
-    menu_tray: nwg::Menu,
-
-    #[nwg_control(parent: menu_tray, text: "Open")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::show])]
-    menu_tray_open: nwg::MenuItem,
-
-    #[nwg_control(parent: menu_tray)]
-    menu_tray_sep: nwg::MenuSeparator,
-
-    #[nwg_control(parent: menu_tray, text: "Exit")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit])]
-    menu_tray_exit: nwg::MenuItem,
 
     // File menu
     #[nwg_control(parent: window, text: "File", popup: false)]
@@ -105,7 +92,7 @@ pub struct UsbipdGui {
     menu_file_sep1: nwg::MenuSeparator,
 
     #[nwg_control(parent: menu_file, text: "Exit")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit])]
+    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit()])]
     menu_file_exit: nwg::MenuItem,
 }
 
@@ -154,9 +141,137 @@ impl UsbipdGui {
         self.window.set_visible(true);
     }
 
-    fn show_tray_menu(&self) {
+    fn show_menu_tray(self: &Rc<UsbipdGui>) {
+        // This prevents a memory leak in which the event handler closure is
+        // kept alive after the menu is destroyed. An attempt was made to unbind
+        // from the OnMenuExit event, but it seems to prevent the menu event
+        // handlers from running at all.
+        if let Some(handler) = self.menu_tray_event_handler.take() {
+            nwg::unbind_event_handler(&handler);
+        }
+
+        let mut menu_tray = nwg::Menu::default();
+        nwg::Menu::builder()
+            .popup(true)
+            .parent(self.window.handle)
+            .build(&mut menu_tray)
+            .unwrap();
+
+        let devices = list_devices()
+            .into_iter()
+            .filter(|d| d.is_connected())
+            .collect::<Vec<_>>();
+
+        let mut menu_items: Vec<(nwg::MenuItem, UsbDevice)> = Vec::with_capacity(devices.len());
+        for device in devices {
+            let device_name = device.description.as_deref();
+            let vid_pid = device.vid_pid();
+            let description = device_name.map(|s| s.to_string()).unwrap_or(
+                vid_pid
+                    .clone()
+                    .unwrap_or_else(|| "Unknown Device".to_string()),
+            );
+
+            if device.is_bound() {
+                let menu_item = self
+                    .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
+                    .unwrap();
+
+                menu_items.push((menu_item, device));
+            }
+        }
+
+        if menu_items.is_empty() {
+            self.new_menu_item(menu_tray.handle, "No bound devices", true, false)
+                .unwrap();
+        };
+
+        self.new_menu_separator(menu_tray.handle).unwrap();
+        let open_item = self
+            .new_menu_item(menu_tray.handle, "Open", false, false)
+            .unwrap();
+        self.new_menu_separator(menu_tray.handle).unwrap();
+        let exit_item = self
+            .new_menu_item(menu_tray.handle, "Exit", false, false)
+            .unwrap();
+
+        let rc_self_weak = Rc::downgrade(self);
+        let handler =
+            nwg::full_bind_event_handler(&self.window.handle, move |evt, _evt_data, handle| {
+                // Ignore events that are not menu item selections
+                if evt != nwg::Event::OnMenuItemSelected {
+                    return;
+                }
+
+                // Retrieve the GUI instance
+                let Some(rc_self) = rc_self_weak.upgrade() else {
+                    return;
+                };
+
+                // Handle the menu item selection
+                if handle == open_item.handle {
+                    // The open menu item was selected
+                    UsbipdGui::show(rc_self.as_ref());
+                } else if handle == exit_item.handle {
+                    // The exit menu item was selected
+                    UsbipdGui::exit();
+                } else {
+                    // A device menu item was selected
+                    let Some(device) = menu_items
+                        .iter()
+                        .find(|(item, _)| item.handle == handle)
+                        .map(|(_, d)| d)
+                    else {
+                        return;
+                    };
+
+                    if device.is_attached() {
+                        // Silently ignore errors here as the device may have been unplugged
+                        device.detach().ok();
+                    } else {
+                        // TODO: this currently blocks the UI
+                        device.attach().unwrap_or_else(|err| {
+                            nwg::modal_error_message(
+                                rc_self.window.handle,
+                                "WSL USB Manager: Command Error",
+                                &err,
+                            );
+                        });
+                    }
+                }
+            });
+        self.menu_tray_event_handler.set(Some(handler));
+
         let (x, y) = nwg::GlobalCursor::position();
-        self.menu_tray.popup(x, y);
+        menu_tray.popup(x, y);
+    }
+
+    fn new_menu_item(
+        &self,
+        parent: nwg::ControlHandle,
+        text: &str,
+        disabled: bool,
+        check: bool,
+    ) -> Result<nwg::MenuItem, nwg::NwgError> {
+        let mut menu_item = nwg::MenuItem::default();
+        nwg::MenuItem::builder()
+            .text(text)
+            .disabled(disabled)
+            .parent(parent)
+            .check(check)
+            .build(&mut menu_item)
+            .map(|_| menu_item)
+    }
+
+    fn new_menu_separator(
+        &self,
+        parent: nwg::ControlHandle,
+    ) -> Result<nwg::MenuSeparator, nwg::NwgError> {
+        let mut sep = nwg::MenuSeparator::default();
+        nwg::MenuSeparator::builder()
+            .parent(parent)
+            .build(&mut sep)
+            .map(|_| sep)
     }
 
     fn refresh(&self) {
@@ -165,7 +280,7 @@ impl UsbipdGui {
         self.auto_attach_tab_content.refresh();
     }
 
-    fn exit(&self) {
+    fn exit() {
         nwg::stop_thread_dispatch();
     }
 }
