@@ -43,11 +43,12 @@ Run the executable to start the application.
 
 ## Roadmap
 
-- Auto-attach profiles
-    - UI dialog for creating and editing profiles
-    - Background service for auto-attaching devices
-- Provide an installer and add to `winget`
-    - Option to setup logon startup to tray icon
+- [x] Auto-attach profiles
+    - [x] UI dialog for creating and editing profiles
+    - [x] Background service for auto-attaching devices
+- [ ] Provide an installer and add to `winget`
+    - [ ] Option to start minimized to tray icon
+    - [ ] Option to setup logon startup to tray icon
 
 
 ## Support

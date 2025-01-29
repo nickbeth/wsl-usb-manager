@@ -493,7 +493,7 @@ dependencies = [
 
 [[package]]
 name = "wsl-usb-manager"
-version = "1.1.0"
+version = "1.2.0"
 dependencies = [
  "embed-manifest",
  "embed-resource",
