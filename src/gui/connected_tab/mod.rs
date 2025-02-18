@@ -11,6 +11,7 @@ use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
 };
+use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE;
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
@@ -20,7 +21,7 @@ use crate::gui::{
     nwg_ext::{BitmapEx, MenuItemEx},
     usbipd_gui::GuiTab,
 };
-use crate::usbipd::{self, UsbDevice};
+use crate::usbipd::{self, UsbDevice, UsbipState};
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),
@@ -137,16 +138,22 @@ impl ConnectedTab {
     }
 
     fn init_list(&self) {
-        let dv = &self.list_view;
-        dv.clear();
-        dv.insert_column("Bus ID");
-        dv.insert_column("Device");
-        dv.insert_column("State");
-        dv.set_headers_enabled(true);
+        let list = &self.list_view;
+        list.clear();
+        list.insert_column("Bus ID");
+        list.insert_column("State");
+        list.insert_column("Device");
+        list.set_headers_enabled(true);
 
-        dv.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
-        dv.set_column_width(1, 415);
-        dv.set_column_width(2, LVSCW_AUTOSIZE_USEHEADER as isize);
+        // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
+        list.insert_items_row(None, &["-", &format!("{}  ", UsbipState::None), "Device"]);
+
+        list.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
+        list.set_column_width(1, LVSCW_AUTOSIZE as isize);
+        list.set_column_width(2, LVSCW_AUTOSIZE_USEHEADER as isize);
+
+        // Clear the dummy row
+        list.clear();
     }
 
     /// Clears the device list and reloads it with the currently connected devices.
@@ -159,8 +166,8 @@ impl ConnectedTab {
                 None,
                 &[
                     device.bus_id.as_deref().unwrap_or("-"),
-                    device.description.as_deref().unwrap_or("Unknown device"),
                     &device.state().to_string(),
+                    device.description.as_deref().unwrap_or("Unknown device"),
                 ],
             );
         }
