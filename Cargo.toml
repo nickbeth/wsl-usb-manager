@@ -1,6 +1,6 @@
 [package]
 name = "wsl-usb-manager"
-version = "1.2.0"
+version = "1.2.1"
 authors = ["Niccolò Betto <niccolo.betto@gmail.com>"]
 edition = "2021"
 license = "MIT"
