@@ -1,7 +1,7 @@
 <!-- Copyright (c) 2024 JP Hutchins -->
 <!-- SPDX-License-Identifier: MIT -->
 
-<Project Sdk="WixToolset.Sdk/4.0.4">
+<Project Sdk="WixToolset.Sdk/5.0.2">
     <PropertyGroup>
         <DefineConstants> ApplicationFiles=$(PORTABLE_PATH)/
         </DefineConstants>
@@ -9,8 +9,8 @@
     </PropertyGroup>
 
     <ItemGroup>
-        <PackageReference Include="WixToolset.Heat" Version="4.0.4" />
-        <PackageReference Include="WixToolset.UI.wixext" Version="4.0.4" />
+        <PackageReference Include="WixToolset.Heat" Version="5.0.2" />
+        <PackageReference Include="WixToolset.UI.wixext" Version="5.0.2" />
     </ItemGroup>
 
     <ItemGroup>
