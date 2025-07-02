@@ -171,11 +171,30 @@ impl UsbipdGui {
                     .clone()
                     .unwrap_or_else(|| "Unknown Device".to_string()),
             );
-
             if device.is_bound() {
-                let menu_item = self
+                let menu_item;
+
+                if description.len() > 16 {
+                    let mut short_description = description.clone();
+                    short_description.truncate(16);
+                    let bus_id = device
+                        .bus_id
+                        .clone()
+                        .unwrap_or_else(|| "Unknown Bus".to_string());
+                    short_description.push_str(&format!("(Bus:{})", bus_id));
+                    menu_item = self
+                        .new_menu_item(
+                            menu_tray.handle,
+                            &short_description,
+                            false,
+                            device.is_attached(),
+                        )
+                        .unwrap();
+                }else {
+                    menu_item = self
                     .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
                     .unwrap();
+                };
 
                 menu_items.push((menu_item, device));
             }
