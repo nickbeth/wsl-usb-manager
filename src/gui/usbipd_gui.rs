@@ -171,17 +171,17 @@ impl UsbipdGui {
                     .clone()
                     .unwrap_or_else(|| "Unknown Device".to_string()),
             );
+            // if len > 32, truncate and add bus id
+            if description.len() > 32 { // @todo use settings replace magic number
             description.truncate(32);
-            if device.is_bound() {
-                let menu_item;
-                if description.len() == 32 {
                     let bus_id = device
                         .bus_id
                         .clone()
                         .unwrap_or_else(|| "Unknown Bus".to_string());
                     description.push_str(&format!("..(Bus:{})", bus_id));
                 }
-                    menu_item = self
+            if device.is_bound() {
+                let menu_item = self
                     .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
                     .unwrap();
 
