@@ -166,12 +166,22 @@ impl UsbipdGui {
         for device in devices {
             let device_name = device.description.as_deref();
             let vid_pid = device.vid_pid();
-            let description = device_name.map(|s| s.to_string()).unwrap_or(
+            let mut description: String = device_name.map(|s| s.to_string()).unwrap_or(
                 vid_pid
                     .clone()
                     .unwrap_or_else(|| "Unknown Device".to_string()),
             );
-
+            // if len > 32, truncate and add bus id
+            if description.len() > 32 {
+                // @todo use settings replace magic number
+                    let bus_id = device
+                        .bus_id
+                        .clone()
+                        .unwrap_or_else(|| "Unknown Bus".to_string());
+                let bus_id_show = &format!("..(Bus:{})", bus_id); // not think it will be longer than 32
+                description.truncate(32 - bus_id_show.len());
+                description.push_str(bus_id_show);
+                }
             if device.is_bound() {
                 let menu_item = self
                     .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
