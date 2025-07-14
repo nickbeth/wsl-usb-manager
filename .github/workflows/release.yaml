@@ -1,0 +1,52 @@
+name: Release
+
+on:
+  release:
+    types: published
+
+jobs:
+  build:
+    uses: ./.github/workflows/build.yaml
+
+  release:
+    runs-on: ubuntu-latest
+    needs: build
+    permissions:
+      contents: write
+
+    steps:
+      - name: Download Artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: '*-release'
+          path: artifacts
+
+      - name: Release Artifact Upload
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+
+  winget:
+    runs-on: ubuntu-latest
+    needs: release
+
+    steps:
+      - name: Check if WINGET_TOKEN is present
+        id: check_secret
+        run: |
+          if [ -z "${{ secrets.WINGET_TOKEN }}" ]; then
+            echo "WINGET_TOKEN is not set"
+            echo "winget_token_present=false" >> $GITHUB_ENV
+          else
+            echo "WINGET_TOKEN is present"
+            echo "winget_token_present=true" >> $GITHUB_ENV
+          fi
+      - name: Submit to winget
+        id: winget_deploy
+        uses: vedantmgoyal9/winget-releaser@main
+        if: env.winget_token_present == 'true'
+        with:
+          identifier: nickbeth.wsl-usb-manager
+          installers-regex: '\.exe$'
+          fork-user: ${{ secrets.WINGET_FORK_USER }}
+          token: ${{ secrets.WINGET_TOKEN }}

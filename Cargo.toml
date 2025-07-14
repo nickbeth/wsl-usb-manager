@@ -5,6 +5,11 @@ authors = ["Niccolò Betto <niccolo.betto@gmail.com>"]
 edition = "2021"
 license = "MIT"
 
+[profile.release]
+strip = true      # Automatically strip symbols from the binary.
+lto = true        # Enable link time optimization.
+codegen-units = 1 # Limit codegen units to 1 for better optimization.
+
 [dependencies]
 windows-sys = { version = "0.52.0", features = [
     "Win32_Devices_DeviceAndDriverInstallation",

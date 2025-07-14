@@ -1,0 +1,68 @@
+name: Build
+
+on:
+  workflow_dispatch:
+  workflow_call:
+
+  push:
+    branches:
+      - "*"
+
+  pull_request:
+    branches:
+      - "*"
+
+jobs:
+  build:
+    name: Build (${{ matrix.type }})
+    runs-on: windows-latest
+    strategy:
+      matrix:
+        include:
+          - type: debug
+            args: ""
+            artifacts: |
+              target/debug/*.exe
+              target/debug/*.pdb
+
+          - type: release
+            args: --release
+            artifacts: |
+              target/release/*.exe
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Build Cache
+        uses: actions/cache@v4
+        id: build-cache
+        with:
+          path: |
+            target/*/*.exe
+            target/*/*.pdb
+          key: windows-latest-${{ matrix.type }}-${{ hashFiles('./Cargo.*', './*.rs', 'img/*', 'img/**/*', 'resources/*', 'resources/**/*', 'src/*', 'src/**/*') }}
+
+      - name: Cargo Cache
+        uses: actions/cache@v4
+        if: ${{ steps.build-cache.outputs.cache-hit != 'true' }}
+        with:
+          path: |
+            ~/.cargo/
+            target/
+          key: windows-latest-${{ matrix.type }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          restore-keys: windows-latest-${{ matrix.type }}-cargo-
+
+      - name: Cargo Build
+        if: ${{ steps.build-cache.outputs.cache-hit != 'true' }}
+        uses: actions-rs/cargo@v1
+        with:
+          command: build
+          args: ${{ matrix.args }}
+
+      - name: Artifact Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: wsl-usb-manager-${{ matrix.type }}
+          path: ${{ matrix.artifacts }}
+          if-no-files-found: error
