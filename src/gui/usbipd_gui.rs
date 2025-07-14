@@ -172,13 +172,15 @@ impl UsbipdGui {
                     .unwrap_or_else(|| "Unknown Device".to_string()),
             );
             // if len > 32, truncate and add bus id
-            if description.len() > 32 { // @todo use settings replace magic number
-            description.truncate(32);
+            if description.len() > 32 {
+                // @todo use settings replace magic number
                     let bus_id = device
                         .bus_id
                         .clone()
                         .unwrap_or_else(|| "Unknown Bus".to_string());
-                    description.push_str(&format!("..(Bus:{})", bus_id));
+                let bus_id_show = &format!("..(Bus:{})", bus_id); // not think it will be longer than 32
+                description.truncate(32 - bus_id_show.len());
+                description.push_str(bus_id_show);
                 }
             if device.is_bound() {
                 let menu_item = self
