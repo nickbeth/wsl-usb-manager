@@ -173,6 +173,27 @@ impl ConnectedTab {
         }
     }
 
+    /// Refreshes the device list using the provided devices.
+    fn refresh_list_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        *self.connected_devices.borrow_mut() = devices
+            .iter()
+            .filter(|d| d.is_connected())
+            .cloned()
+            .collect();
+
+        self.list_view.clear();
+        for device in self.connected_devices.borrow().iter() {
+            self.list_view.insert_items_row(
+                None,
+                &[
+                    device.bus_id.as_deref().unwrap_or("-"),
+                    &device.state().to_string(),
+                    device.description.as_deref().unwrap_or("Unknown device"),
+                ],
+            );
+        }
+    }
+
     /// Updates the device details panel with the currently selected device.
     fn update_device_details(&self) {
         let devices = self.connected_devices.borrow();
@@ -405,6 +426,11 @@ impl GuiTab for ConnectedTab {
 
     fn refresh(&self) {
         self.refresh_list();
+        self.update_device_details();
+    }
+
+    fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        self.refresh_list_with_devices(devices);
         self.update_device_details();
     }
 }

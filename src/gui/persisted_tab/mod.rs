@@ -113,6 +113,23 @@ impl PersistedTab {
         }
     }
 
+    /// Refreshes the device list using the provided devices.
+    fn refresh_list_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        *self.persisted_devices.borrow_mut() = devices
+            .iter()
+            .filter(|d| !d.is_connected())
+            .cloned()
+            .collect();
+
+        self.list_view.clear();
+        for device in self.persisted_devices.borrow().iter() {
+            self.list_view.insert_items_row(
+                None,
+                &[device.description.as_deref().unwrap_or("Unknown device")],
+            );
+        }
+    }
+
     /// Updates the details panel with the currently selected device.
     fn update_persisted_details(&self) {
         let devices = self.persisted_devices.borrow();
@@ -218,6 +235,11 @@ impl GuiTab for PersistedTab {
 
     fn refresh(&self) {
         self.refresh_list();
+        self.update_persisted_details();
+    }
+
+    fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        self.refresh_list_with_devices(devices);
         self.update_persisted_details();
     }
 }

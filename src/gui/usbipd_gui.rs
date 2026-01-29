@@ -21,6 +21,9 @@ pub(super) trait GuiTab {
 
     /// Refreshes the data displayed in the tab.
     fn refresh(&self);
+    
+    /// Refreshes the data displayed in the tab using the provided device list.
+    fn refresh_with_devices(&self, devices: &[UsbDevice]);
 }
 
 #[derive(Default, NwgUi)]
@@ -275,9 +278,11 @@ impl UsbipdGui {
     }
 
     fn refresh(&self) {
-        self.connected_tab_content.refresh();
-        self.persisted_tab_content.refresh();
-        self.auto_attach_tab_content.refresh();
+        // Fetch the device list once and share it across all tabs
+        let devices = list_devices();
+        self.connected_tab_content.refresh_with_devices(&devices);
+        self.persisted_tab_content.refresh_with_devices(&devices);
+        self.auto_attach_tab_content.refresh_with_devices(&devices);
     }
 
     fn exit() {

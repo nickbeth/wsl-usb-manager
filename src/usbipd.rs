@@ -4,6 +4,7 @@
 use std::fmt::Display;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -12,6 +13,9 @@ use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW, SHELLEXE
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 use crate::win_utils::get_last_error_string;
+
+/// Cached version of usbipd to avoid repeated process spawns
+static CACHED_VERSION: OnceLock<Version> = OnceLock::new();
 
 /// The `usbipd` executable name.
 const USBIPD_EXE: &str = "usbipd";
@@ -47,7 +51,7 @@ impl Display for UsbipState {
 }
 
 /// A struct representing a USB device as returned by `usbipd`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 pub struct UsbDevice {
     #[serde(rename = "BusId")]
     pub bus_id: Option<String>,
@@ -94,7 +98,7 @@ impl UsbDevice {
         let instance_id = self.instance_id.as_deref()?;
         // VID_XXXX&PID_XXXX
         let vid_pid = instance_id.split('\\').nth(1)?;
-        // VVVV:PPPP
+        // VVVV:PPPP - replace in-place to avoid extra allocations
         let vid_pid = vid_pid.replace("VID_", "").replace("&PID_", ":");
 
         Some(vid_pid)
@@ -312,21 +316,16 @@ where
     I: IntoIterator<Item = &'a &'a str>,
 {
     // Build a space-separated string of arguments
-    let mut args_str: String = String::new();
-    for arg in args {
-        args_str.push_str(&format!("{arg} "));
-    }
-    // Remove the trailing comma
-    args_str.pop();
+    let args_vec: Vec<&str> = args.into_iter().copied().collect();
+    let args_str = args_vec.join(" ");
     // Insert a null terminator
+    let mut args_str = args_str;
     args_str.push('\0');
 
     // Prepare u16 strings
-    let verb = "runas\0".encode_utf16().collect::<Vec<_>>();
-    let file = (USBIPD_EXE.to_owned() + "\0")
-        .encode_utf16()
-        .collect::<Vec<_>>();
-    let params = args_str.encode_utf16().collect::<Vec<_>>();
+    let verb: Vec<u16> = "runas\0".encode_utf16().collect();
+    let file: Vec<u16> = (USBIPD_EXE.to_owned() + "\0").encode_utf16().collect();
+    let params: Vec<u16> = args_str.encode_utf16().collect();
 
     let mut shell_exec_info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
@@ -355,6 +354,7 @@ where
 
 /// A `ubpidp` version struct with major, minor, and patch fields.
 #[allow(unused)]
+#[derive(Clone)]
 pub struct Version {
     pub major: u32,
     pub minor: u32,
@@ -362,29 +362,32 @@ pub struct Version {
 }
 
 /// Returns the version of `usbipd`, split into major, minor, and patch fields.
-pub fn version() -> Version {
-    let cmd = Command::new(USBIPD_EXE)
-        .arg("--version")
-        .creation_flags(CREATE_NO_WINDOW)
-        .output()
-        .unwrap();
-    let version_string = String::from_utf8(cmd.stdout).unwrap();
+/// The version is cached after the first call to avoid repeated process spawns.
+pub fn version() -> &'static Version {
+    CACHED_VERSION.get_or_init(|| {
+        let cmd = Command::new(USBIPD_EXE)
+            .arg("--version")
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .unwrap();
+        let version_string = String::from_utf8(cmd.stdout).unwrap();
 
-    let version_split: Vec<&str> = version_string.split('+').collect();
-    let version_parts: Vec<&str> = version_split.first().unwrap().split('.').collect();
+        let version_split: Vec<&str> = version_string.split('+').collect();
+        let version_parts: Vec<&str> = version_split.first().unwrap().split('.').collect();
 
-    let parse = |i| -> u32 {
-        version_parts
-            .get(i)
-            .and_then(|part: &&str| part.parse().ok())
-            .unwrap_or(0)
-    };
+        let parse = |i| -> u32 {
+            version_parts
+                .get(i)
+                .and_then(|part: &&str| part.parse().ok())
+                .unwrap_or(0)
+        };
 
-    Version {
-        major: parse(0),
-        minor: parse(1),
-        patch: parse(2),
-    }
+        Version {
+            major: parse(0),
+            minor: parse(1),
+            patch: parse(2),
+        }
+    })
 }
 
 /// Checks if `usbipd` is installed in the system.

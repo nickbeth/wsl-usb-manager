@@ -216,4 +216,9 @@ impl GuiTab for AutoAttachTab {
         self.refresh_list();
         self.update_auto_attach_details();
     }
+
+    fn refresh_with_devices(&self, _devices: &[crate::usbipd::UsbDevice]) {
+        // Auto attach tab doesn't use device list
+        self.refresh();
+    }
 }
