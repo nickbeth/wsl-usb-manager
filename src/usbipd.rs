@@ -4,6 +4,7 @@
 use std::fmt::Display;
 use std::os::windows::process::CommandExt;
 use std::process::Command;
+use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
 use serde::Deserialize;
@@ -361,8 +362,11 @@ pub struct Version {
     pub patch: u32,
 }
 
-/// Returns the version of `usbipd`, split into major, minor, and patch fields.
-pub fn version() -> Version {
+/// Static cached version of `usbipd`.
+static CACHED_VERSION: OnceLock<Version> = OnceLock::new();
+
+/// Fetches the version of `usbipd` by spawning a process.
+fn fetch_version() -> Version {
     let cmd = Command::new(USBIPD_EXE)
         .arg("--version")
         .creation_flags(CREATE_NO_WINDOW)
@@ -385,6 +389,11 @@ pub fn version() -> Version {
         minor: parse(1),
         patch: parse(2),
     }
+}
+
+/// Returns the cached version of `usbipd`, initializing it on first call.
+pub fn version() -> &'static Version {
+    CACHED_VERSION.get_or_init(fetch_version)
 }
 
 /// Checks if `usbipd` is installed in the system.
