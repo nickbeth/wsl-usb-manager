@@ -301,8 +301,9 @@ impl UsbipdGui {
     }
 
     fn refresh(&self) {
-        self.connected_tab_content.refresh();
-        self.persisted_tab_content.refresh();
+        let devices = list_devices();
+        self.connected_tab_content.refresh_with_devices(&devices);
+        self.persisted_tab_content.refresh_with_devices(&devices);
         self.auto_attach_tab_content.refresh();
     }
 

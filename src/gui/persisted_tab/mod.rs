@@ -100,9 +100,13 @@ impl PersistedTab {
         dv.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
     }
 
-    /// Clears the device list and reloads it with the currently persisted devices.
-    fn refresh_list(&self) {
-        self.update_devices();
+    /// Clears the device list and reloads it with the provided persisted devices.
+    fn refresh_list(&self, devices: &[usbipd::UsbDevice]) {
+        *self.persisted_devices.borrow_mut() = devices
+            .iter()
+            .filter(|d| !d.is_connected())
+            .cloned()
+            .collect();
 
         self.list_view.clear();
         for device in self.persisted_devices.borrow().iter() {
@@ -187,13 +191,6 @@ impl PersistedTab {
         nwg::unbind_event_handler(&cursor_event);
     }
 
-    fn update_devices(&self) {
-        *self.persisted_devices.borrow_mut() = usbipd::list_devices()
-            .into_iter()
-            .filter(|d| !d.is_connected())
-            .collect();
-    }
-
     /// Inhibits the window close event.
     fn inhibit_close(data: &nwg::EventData) {
         if let nwg::EventData::OnWindowClose(close_data) = data {
@@ -217,7 +214,16 @@ impl GuiTab for PersistedTab {
     }
 
     fn refresh(&self) {
-        self.refresh_list();
+        let devices = usbipd::list_devices();
+        self.refresh_with_devices(&devices);
+    }
+}
+
+impl PersistedTab {
+    /// Refreshes the tab with the provided device list.
+    /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
+    pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        self.refresh_list(devices);
         self.update_persisted_details();
     }
 }
