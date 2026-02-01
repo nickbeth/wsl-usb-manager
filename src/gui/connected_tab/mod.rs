@@ -380,6 +380,13 @@ impl ConnectedTab {
             close_data.close(false);
         }
     }
+
+    /// Refreshes the tab with the provided device list.
+    /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
+    pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        self.refresh_list(devices);
+        self.update_device_details();
+    }
 }
 
 impl GuiTab for ConnectedTab {
@@ -403,14 +410,5 @@ impl GuiTab for ConnectedTab {
     fn refresh(&self) {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
-    }
-}
-
-impl ConnectedTab {
-    /// Refreshes the tab with the provided device list.
-    /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
-    pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
-        self.refresh_list(devices);
-        self.update_device_details();
     }
 }

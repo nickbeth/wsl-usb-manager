@@ -197,6 +197,13 @@ impl PersistedTab {
             close_data.close(false);
         }
     }
+
+    /// Refreshes the tab with the provided device list.
+    /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
+    pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
+        self.refresh_list(devices);
+        self.update_persisted_details();
+    }
 }
 
 impl GuiTab for PersistedTab {
@@ -216,14 +223,5 @@ impl GuiTab for PersistedTab {
     fn refresh(&self) {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
-    }
-}
-
-impl PersistedTab {
-    /// Refreshes the tab with the provided device list.
-    /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
-    pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
-        self.refresh_list(devices);
-        self.update_persisted_details();
     }
 }
