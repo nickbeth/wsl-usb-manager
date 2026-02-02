@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::{Cell, RefCell},
     rc::Rc,
 };
@@ -164,21 +165,46 @@ impl UsbipdGui {
 
         let mut menu_items: Vec<(nwg::MenuItem, UsbDevice)> = Vec::with_capacity(devices.len());
         for device in devices {
-            let device_name = device.description.as_deref();
-            let vid_pid = device.vid_pid();
-            let description = device_name.map(|s| s.to_string()).unwrap_or(
-                vid_pid
-                    .clone()
-                    .unwrap_or_else(|| "Unknown Device".to_string()),
-            );
-
-            if device.is_bound() {
-                let menu_item = self
-                    .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
-                    .unwrap();
-
-                menu_items.push((menu_item, device));
+            // Only show bound devices
+            if !device.is_bound() {
+                continue;
             }
+
+            // Get device name or fallback to "Unknown Device (bus_id)"
+            let device_name = device
+                .description
+                .as_deref()
+                .map(Cow::Borrowed)
+                .unwrap_or_else(|| {
+                    let bus_id = device.bus_id.as_deref().unwrap_or("-");
+                    Cow::Owned(format!("Unknown Device ({})", bus_id))
+                });
+            let name = device_name.as_ref();
+
+            // Truncate long device names
+            const MAX_LENGTH: usize = 30;
+            let char_count = name.chars().count();
+
+            let description = if char_count <= MAX_LENGTH {
+                Cow::Borrowed(name)
+            } else {
+                let remaining = MAX_LENGTH - 3;
+                let keep_start = remaining / 2;
+                let keep_end = remaining - keep_start;
+
+                // Calculate byte positions for cutting the str
+                let (cut_start_pos, _) = name.char_indices().nth(keep_start).unwrap();
+                let (cut_end_pos, _) = name.char_indices().nth_back(keep_end - 1).unwrap();
+
+                let start_part = name[..cut_start_pos].trim_end();
+                let end_part = name[cut_end_pos..].trim_start();
+                Cow::Owned(format!("{start_part}...{end_part}"))
+            };
+
+            let menu_item = self
+                .new_menu_item(menu_tray.handle, &description, false, device.is_attached())
+                .unwrap();
+            menu_items.push((menu_item, device));
         }
 
         if menu_items.is_empty() {
