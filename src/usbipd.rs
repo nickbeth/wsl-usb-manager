@@ -48,7 +48,7 @@ impl Display for UsbipState {
 }
 
 /// A struct representing a USB device as returned by `usbipd`.
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Clone, Deserialize)]
 pub struct UsbDevice {
     #[serde(rename = "BusId")]
     pub bus_id: Option<String>,
