@@ -10,7 +10,7 @@ use native_windows_gui as nwg;
 use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
-use crate::usbipd::{list_devices, UsbDevice};
+use crate::usbipd::{UsbDevice, list_devices};
 use crate::{
     auto_attach::AutoAttacher,
     win_utils::{self, DeviceNotification},

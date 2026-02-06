@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 
 use serde::Deserialize;
 use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
-use windows_sys::Win32::UI::Shell::{ShellExecuteExW, SHELLEXECUTEINFOW, SHELLEXECUTEINFOW_0};
+use windows_sys::Win32::UI::Shell::{SHELLEXECUTEINFOW, SHELLEXECUTEINFOW_0, ShellExecuteExW};
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
 use crate::win_utils::get_last_error_string;
@@ -332,19 +332,21 @@ where
     let mut shell_exec_info = SHELLEXECUTEINFOW {
         cbSize: std::mem::size_of::<SHELLEXECUTEINFOW>() as u32,
         fMask: 0,
-        hwnd: 0,
+        hwnd: std::ptr::null_mut(),
         lpVerb: verb.as_ptr(),
         lpFile: file.as_ptr(),
         lpParameters: params.as_ptr(),
         lpDirectory: std::ptr::null(),
         nShow: SW_HIDE,
-        hInstApp: 0,
+        hInstApp: std::ptr::null_mut(),
         lpIDList: std::ptr::null_mut(),
         lpClass: std::ptr::null(),
-        hkeyClass: 0,
+        hkeyClass: std::ptr::null_mut(),
         dwHotKey: 0,
-        Anonymous: SHELLEXECUTEINFOW_0 { hMonitor: 0 },
-        hProcess: 0,
+        Anonymous: SHELLEXECUTEINFOW_0 {
+            hMonitor: std::ptr::null_mut(),
+        },
+        hProcess: std::ptr::null_mut(),
     };
 
     if unsafe { ShellExecuteExW(&mut shell_exec_info as *mut _) } == 0 {
