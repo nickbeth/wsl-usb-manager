@@ -3,11 +3,11 @@ use native_windows_gui as nwg;
 use windows_sys::Win32::Foundation::HANDLE;
 use windows_sys::Win32::Graphics::Gdi::DeleteObject;
 use windows_sys::Win32::UI::Shell::{
-    SHGetStockIconInfo, SHGSI_ICON, SHGSI_SMALLICON, SHSTOCKICONID, SHSTOCKICONINFO,
+    SHGSI_ICON, SHGSI_SMALLICON, SHGetStockIconInfo, SHSTOCKICONID, SHSTOCKICONINFO,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CopyImage, DestroyIcon, GetIconInfoExW, SetMenuItemInfoW, HMENU, ICONINFOEXW, IMAGE_BITMAP,
-    LR_CREATEDIBSECTION, MENUITEMINFOW, MF_BYCOMMAND, MIIM_BITMAP,
+    CopyImage, DestroyIcon, GetIconInfoExW, HMENU, ICONINFOEXW, IMAGE_BITMAP, LR_CREATEDIBSECTION,
+    MENUITEMINFOW, MF_BYCOMMAND, MIIM_BITMAP, SetMenuItemInfoW,
 };
 
 /// Extends [`nwg::Bitmap`] with additional functionality.
@@ -21,7 +21,7 @@ impl BitmapEx for nwg::Bitmap {
         // Retrieve the icon
         let mut stock_icon_info = SHSTOCKICONINFO {
             cbSize: std::mem::size_of::<SHSTOCKICONINFO>() as u32,
-            hIcon: 0,
+            hIcon: std::ptr::null_mut(),
             iSysImageIndex: 0,
             iIcon: 0,
             szPath: [0; 260],
@@ -40,8 +40,8 @@ impl BitmapEx for nwg::Bitmap {
             fIcon: 0,
             xHotspot: 0,
             yHotspot: 0,
-            hbmMask: 0,
-            hbmColor: 0,
+            hbmMask: std::ptr::null_mut(),
+            hbmColor: std::ptr::null_mut(),
             wResID: 0,
             szModName: [0; 260],
             szResName: [0; 260],
@@ -68,7 +68,7 @@ impl BitmapEx for nwg::Bitmap {
             DestroyIcon(stock_icon_info.hIcon);
         };
 
-        if hbitmap == 0 {
+        if hbitmap == std::ptr::null_mut() {
             panic!("Failed to create bitmap from system icon");
         } else {
             #[allow(unused)]
@@ -99,7 +99,7 @@ impl MenuItemEx for nwg::MenuItem {
         let (hmenu, item_id) = self.handle.hmenu_item().unwrap();
         let hbitmap = match bitmap {
             Some(b) => b.handle as HANDLE,
-            None => 0,
+            None => std::ptr::null_mut(),
         };
 
         let menu_item_info = MENUITEMINFOW {
@@ -108,9 +108,9 @@ impl MenuItemEx for nwg::MenuItem {
             fType: 0,
             fState: 0,
             wID: 0,
-            hSubMenu: 0,
-            hbmpChecked: 0,
-            hbmpUnchecked: 0,
+            hSubMenu: std::ptr::null_mut(),
+            hbmpChecked: std::ptr::null_mut(),
+            hbmpUnchecked: std::ptr::null_mut(),
             dwItemData: 0,
             dwTypeData: std::ptr::null_mut(),
             cch: 0,
