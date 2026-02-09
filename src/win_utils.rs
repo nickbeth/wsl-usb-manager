@@ -5,16 +5,16 @@ use std::ptr::null_mut;
 use windows_sys::Win32::{
     Devices::{
         DeviceAndDriverInstallation::{
-            CM_Register_Notification, CM_Unregister_Notification, CM_NOTIFY_ACTION,
-            CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL, CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL,
-            CM_NOTIFY_EVENT_DATA, CM_NOTIFY_FILTER, CM_NOTIFY_FILTER_0, CM_NOTIFY_FILTER_0_2,
-            CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE, CR_SUCCESS, HCMNOTIFICATION,
+            CM_NOTIFY_ACTION, CM_NOTIFY_ACTION_DEVICEINTERFACEARRIVAL,
+            CM_NOTIFY_ACTION_DEVICEINTERFACEREMOVAL, CM_NOTIFY_EVENT_DATA, CM_NOTIFY_FILTER,
+            CM_NOTIFY_FILTER_0, CM_NOTIFY_FILTER_0_0, CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE,
+            CM_Register_Notification, CM_Unregister_Notification, CR_SUCCESS, HCMNOTIFICATION,
         },
         Usb::GUID_DEVINTERFACE_USB_DEVICE,
     },
-    Foundation::{GetLastError, ERROR_ALREADY_EXISTS, ERROR_SUCCESS},
+    Foundation::{ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError},
     System::{
-        Diagnostics::Debug::{FormatMessageW, FORMAT_MESSAGE_FROM_SYSTEM},
+        Diagnostics::Debug::{FORMAT_MESSAGE_FROM_SYSTEM, FormatMessageW},
         Threading::CreateMutexW,
     },
 };
@@ -27,7 +27,7 @@ pub fn acquire_single_instance_lock() -> bool {
         .collect();
 
     let mutex_handle = unsafe { CreateMutexW(null_mut(), 1, mutex_name.as_ptr()) };
-    if mutex_handle == 0 {
+    if mutex_handle == std::ptr::null_mut() {
         return false;
     }
 
@@ -84,7 +84,7 @@ pub fn register_usb_device_notifications(
     }
 
     let mut notif = DeviceNotification {
-        handle: 0,
+        handle: std::ptr::null_mut(),
         closure: Box::new(Box::new(callback)),
     };
 
@@ -95,7 +95,7 @@ pub fn register_usb_device_notifications(
         FilterType: CM_NOTIFY_FILTER_TYPE_DEVICEINTERFACE,
         Reserved: 0,
         u: CM_NOTIFY_FILTER_0 {
-            DeviceInterface: CM_NOTIFY_FILTER_0_2 {
+            DeviceInterface: CM_NOTIFY_FILTER_0_0 {
                 ClassGuid: GUID_DEVINTERFACE_USB_DEVICE,
             },
         },
@@ -131,7 +131,7 @@ pub struct DeviceNotification {
 impl Default for DeviceNotification {
     fn default() -> Self {
         Self {
-            handle: 0,
+            handle: std::ptr::null_mut(),
             closure: Box::new(Box::new(|| {})),
         }
     }
@@ -139,7 +139,7 @@ impl Default for DeviceNotification {
 
 impl Drop for DeviceNotification {
     fn drop(&mut self) {
-        if self.handle != 0 {
+        if self.handle != std::ptr::null_mut() {
             unsafe { CM_Unregister_Notification(self.handle) };
         }
     }

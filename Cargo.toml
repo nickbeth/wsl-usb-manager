@@ -2,11 +2,11 @@
 name = "wsl-usb-manager"
 version = "1.2.2"
 authors = ["Niccolò Betto <niccolo.betto@gmail.com>"]
-edition = "2021"
+edition = "2024"
 license = "MIT"
 
 [dependencies]
-windows-sys = { version = "0.52.0", features = [
+windows-sys = { version = "0.61.2", features = [
     "Win32_Devices_DeviceAndDriverInstallation",
     "Win32_Devices_Usb",
     "Win32_Foundation",
@@ -37,8 +37,8 @@ native-windows-gui = { version = "=1.0.12", default-features = false, features =
     "textbox",
     "tray-notification",
 ] }
-serde = { version = "1.0.197", features = ["derive"] }
-serde_json = "1.0.115"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
 
 [patch.crates-io]
 # This is a temporary fix for a crash in the native-windows-gui crate
@@ -46,5 +46,5 @@ serde_json = "1.0.115"
 native-windows-gui = { git = "https://github.com/nickbeth/native-windows-gui.git", branch = "transmute-ub-1.0.12" }
 
 [build-dependencies]
-embed-resource = "2.4"
-embed-manifest = "1.4"
+embed-resource = "2.5.2"
+embed-manifest = "1.5.0"
