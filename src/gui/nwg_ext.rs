@@ -68,7 +68,7 @@ impl BitmapEx for nwg::Bitmap {
             DestroyIcon(stock_icon_info.hIcon);
         };
 
-        if hbitmap == std::ptr::null_mut() {
+        if hbitmap.is_null() {
             panic!("Failed to create bitmap from system icon");
         } else {
             #[allow(unused)]
