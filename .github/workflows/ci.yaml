@@ -30,7 +30,7 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - run: cargo clippy --all-features
+      - run: cargo clippy --all-features -- -D warnings
 
   format:
     name: Check Rust formatting
