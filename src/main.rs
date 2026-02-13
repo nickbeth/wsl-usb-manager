@@ -14,9 +14,10 @@ use auto_attach::AutoAttacher;
 
 fn main() -> ExitCode {
     // Parse arguments
-    if let Err(code) = Args::parse() {
-        return code;
-    }
+    let args = match Args::parse() {
+        Ok(args) => args,
+        Err(code) => return code,
+    };
 
     // Ensure that only one instance of the application is running
     if !win_utils::acquire_single_instance_lock() {
@@ -35,7 +36,7 @@ fn main() -> ExitCode {
 
     let auto_attacher = Rc::new(RefCell::new(AutoAttacher::new()));
 
-    let start = gui::start(&auto_attacher);
+    let start = gui::start(&auto_attacher, args.minimized);
 
     if let Err(err) = start {
         gui::show_start_failure(&err.to_string());
