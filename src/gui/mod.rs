@@ -15,7 +15,10 @@ use usbipd_gui::UsbipdGui;
 /// Starts the GUI and runs the event loop.
 ///
 /// This function will not return until the app is closed.
-pub fn start(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Result<(), nwg::NwgError> {
+pub fn start(
+    auto_attacher: &Rc<RefCell<AutoAttacher>>,
+    start_minimized: bool,
+) -> Result<(), nwg::NwgError> {
     nwg::init()?;
 
     let mut font = nwg::Font::default();
@@ -27,7 +30,7 @@ pub fn start(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Result<(), nwg::NwgEr
 
     nwg::Font::set_global_default(Some(font));
 
-    let _gui = UsbipdGui::build_ui(UsbipdGui::new(auto_attacher))?;
+    let _gui = UsbipdGui::build_ui(UsbipdGui::new(auto_attacher, start_minimized))?;
 
     // Run the event loop
     nwg::dispatch_thread_events();

@@ -28,6 +28,7 @@ pub(super) trait GuiTab {
 pub struct UsbipdGui {
     device_notification: Cell<DeviceNotification>,
     menu_tray_event_handler: Cell<Option<nwg::EventHandler>>,
+    start_minimized: bool,
 
     #[nwg_resource]
     embed: nwg::EmbedResource,
@@ -36,7 +37,7 @@ pub struct UsbipdGui {
     app_icon: nwg::Icon,
 
     // Window
-    #[nwg_control(size: (780, 430), center: true, title: "WSL USB Manager", icon: Some(&data.app_icon))]
+    #[nwg_control(flags: "MAIN_WINDOW", size: (780, 430), center: true, title: "WSL USB Manager", icon: Some(&data.app_icon))]
     #[nwg_events(
         OnInit: [UsbipdGui::init],
         OnMinMaxInfo: [UsbipdGui::min_max_info(EVT_DATA)],
@@ -98,10 +99,11 @@ pub struct UsbipdGui {
 }
 
 impl UsbipdGui {
-    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>, start_minimized: bool) -> Self {
         Self {
             connected_tab_content: ConnectedTab::new(auto_attacher),
             auto_attach_tab_content: AutoAttachTab::new(auto_attacher),
+            start_minimized,
             ..Default::default()
         }
     }
@@ -123,6 +125,12 @@ impl UsbipdGui {
             })
             .expect("Failed to register USB device notifications"),
         );
+
+        // Window is initialized as invisible (because of nwg limitations)
+        // Show it if we're not starting minimized
+        if !self.start_minimized {
+            self.window.set_visible(true);
+        }
     }
 
     fn min_max_info(data: &nwg::EventData) {
