@@ -58,9 +58,7 @@ pub fn show_multiple_instance_warning() {
 pub fn show_usbipd_not_found_error() {
     nwg::message(&nwg::MessageParams {
         title: "WSL USB Manager: USBIPD Not Found",
-        content: concat!(
-            "USBIPD was not found, please make sure that it is installed and available in the system PATH."
-        ),
+        content: "USBIPD was not found, please make sure that it is installed and available in the system PATH.",
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Error,
     });
