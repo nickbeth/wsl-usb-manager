@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
 };
 
-use native_windows_gui as nwg;
+use native_windows_gui::{self as nwg, NativeUi};
 use nwg::PartialUi;
 use nwg::stretch::{
     geometry::{Rect, Size},
@@ -14,12 +14,13 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
 use super::device_info::DeviceInfo;
-use crate::auto_attach::AutoAttacher;
 use crate::gui::{
+    connected_tab::auto_attach::AutoAttachWindowUi,
     nwg_ext::{BitmapEx, MenuItemEx},
     usbipd_gui::GuiTab,
 };
 use crate::usbipd::{self, UsbDevice, UsbipState};
+use crate::{auto_attach::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),
@@ -34,8 +35,9 @@ const DETAILS_PANEL_PADDING: u32 = 4;
 #[derive(Default)]
 pub struct ConnectedTab {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
+    auto_attach_window: Cell<Option<Box<AutoAttachWindowUi>>>,
 
-    window: Cell<nwg::ControlHandle>,
+    window: RefCell<Rc<nwg::Window>>,
     shield_bitmap: Cell<nwg::Bitmap>,
 
     /// A notice sender to notify the auto attach tab to refresh
@@ -262,15 +264,27 @@ impl ConnectedTab {
     }
 
     fn auto_attach_device(&self) {
-        self.run_command(|device| {
-            self.auto_attacher.borrow_mut().add_device(device)?;
+        let Some(selected_index) = self.list_view.selected_item() else {
+            return;
+        };
 
-            let auto_attach_notice = self.auto_attach_notice.get().unwrap();
-            auto_attach_notice.notice();
-            self.auto_attach_notice.set(Some(auto_attach_notice));
+        let devices = self.connected_devices.borrow();
+        let device = match devices.get(selected_index) {
+            Some(device) => device,
+            None => return,
+        };
 
-            Ok(())
-        });
+        let Ok(ui) = AutoAttachWindow::build_ui(AutoAttachWindow::new(
+            &self.window.borrow(),
+            device.clone(),
+            &self.auto_attacher,
+        )) else {
+            return;
+        };
+
+        // Store the auto attach window UI so that it doesn't get dropped immediately
+        // Drops any old auto attach window in the process, if present
+        self.auto_attach_window.set(Some(Box::new(ui)));
     }
 
     /// Runs a `command` function on the currently selected device.
@@ -280,7 +294,7 @@ impl ConnectedTab {
     ///
     /// If an error occurs, an error dialog is shown.
     fn run_command(&self, command: impl Fn(&UsbDevice) -> Result<(), String>) {
-        let window = self.window.get();
+        let window = self.window.borrow().handle;
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
         let cursor_event =
@@ -310,7 +324,6 @@ impl ConnectedTab {
             nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
         }
 
-        self.window.set(window);
         self.refresh();
         nwg::unbind_event_handler(&cursor_event);
     }
@@ -331,8 +344,8 @@ impl ConnectedTab {
 }
 
 impl GuiTab for ConnectedTab {
-    fn init(&self, window: &nwg::Window) {
-        self.window.replace(window.handle);
+    fn init(&self, window: &Rc<nwg::Window>) {
+        *self.window.borrow_mut() = Rc::clone(window);
 
         let shield_bitmap = nwg::Bitmap::from_system_icon(SIID_SHIELD);
 

@@ -11,15 +11,18 @@ use nwg::{NativeUi, PartialUi};
 use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
-use crate::usbipd::{UsbDevice, list_devices};
 use crate::{
     auto_attach::AutoAttacher,
     win_utils::{self, DeviceNotification},
 };
+use crate::{
+    gui::RESOURCES,
+    usbipd::{UsbDevice, list_devices},
+};
 
 pub(super) trait GuiTab {
     /// Initializes the tab. The root window handle is provided.
-    fn init(&self, window: &nwg::Window);
+    fn init(&self, window: &Rc<nwg::Window>);
 
     /// Refreshes the data displayed in the tab.
     fn refresh(&self);
@@ -31,11 +34,8 @@ pub struct UsbipdGui {
     menu_tray_event_handler: Cell<Option<nwg::EventHandler>>,
     start_minimized: bool,
 
-    embed: nwg::EmbedResource,
-    app_icon: nwg::Icon,
-
     // Window
-    window: nwg::Window,
+    window: Rc<nwg::Window>,
     window_layout: nwg::FlexboxLayout,
     refresh_notice: nwg::Notice,
 
@@ -287,29 +287,21 @@ pub struct UsbipdGuiUi {
 
 impl NativeUi<UsbipdGuiUi> for UsbipdGui {
     fn build_ui(mut data: Self) -> Result<UsbipdGuiUi, nwg::NwgError> {
-        // Resources
-        nwg::EmbedResource::builder().build(&mut data.embed)?;
-
-        nwg::Icon::builder()
-            .source_embed(Some(&data.embed))
-            .source_embed_str(Some("MAINICON"))
-            .build(&mut data.app_icon)?;
-
         // Controls (parent-first order)
         nwg::Window::builder()
             .flags(nwg::WindowFlags::MAIN_WINDOW)
             .size((780, 430))
             .center(true)
             .title("WSL USB Manager")
-            .icon(Some(&data.app_icon))
-            .build(&mut data.window)?;
+            .icon(Some(&RESOURCES.app_icon))
+            .build(Rc::get_mut(&mut data.window).unwrap())?;
 
         nwg::Notice::builder()
-            .parent(&data.window)
+            .parent(&*data.window)
             .build(&mut data.refresh_notice)?;
 
         nwg::TabsContainer::builder()
-            .parent(&data.window)
+            .parent(&*data.window)
             .build(&mut data.tabs_container)?;
 
         nwg::Tab::builder()
@@ -328,13 +320,13 @@ impl NativeUi<UsbipdGuiUi> for UsbipdGui {
             .build(&mut data.auto_attach_tab)?;
 
         nwg::TrayNotification::builder()
-            .parent(&data.window)
-            .icon(Some(&data.app_icon))
+            .parent(&*data.window)
+            .icon(Some(&RESOURCES.app_icon))
             .tip(Some("WSL USB Manager"))
             .build(&mut data.tray)?;
 
         nwg::Menu::builder()
-            .parent(&data.window)
+            .parent(&*data.window)
             .text("File")
             .popup(false)
             .build(&mut data.menu_file)?;
@@ -429,7 +421,7 @@ impl NativeUi<UsbipdGuiUi> for UsbipdGui {
 
         // Build layouts
         nwg::FlexboxLayout::builder()
-            .parent(&ui.window)
+            .parent(&*ui.window)
             .auto_spacing(Some(2))
             .child(&ui.tabs_container)
             .build(&ui.window_layout)?;

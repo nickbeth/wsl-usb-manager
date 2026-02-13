@@ -148,7 +148,6 @@ impl AutoAttachTab {
             nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
         }
 
-        self.window.set(window);
         self.refresh();
         nwg::unbind_event_handler(&cursor_event);
     }
@@ -166,9 +165,8 @@ impl AutoAttachTab {
 }
 
 impl GuiTab for AutoAttachTab {
-    fn init(&self, window: &nwg::Window) {
-        self.window.replace(window.handle);
-
+    fn init(&self, window: &Rc<nwg::Window>) {
+        self.window.set(window.handle);
         self.init_list();
         self.refresh();
     }
