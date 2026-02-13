@@ -1,4 +1,5 @@
 use std::cell::{Cell, RefCell};
+use std::rc::Rc;
 
 use native_windows_gui as nwg;
 use nwg::PartialUi;
@@ -149,7 +150,6 @@ impl PersistedTab {
             nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
         }
 
-        self.window.set(window);
         self.refresh();
         nwg::unbind_event_handler(&cursor_event);
     }
@@ -170,8 +170,8 @@ impl PersistedTab {
 }
 
 impl GuiTab for PersistedTab {
-    fn init(&self, window: &nwg::Window) {
-        self.window.replace(window.handle);
+    fn init(&self, window: &Rc<nwg::Window>) {
+        self.window.set(window.handle);
 
         let shield_bitmap = nwg::Bitmap::from_system_icon(SIID_SHIELD);
         self.delete_button.set_bitmap(Some(&shield_bitmap));

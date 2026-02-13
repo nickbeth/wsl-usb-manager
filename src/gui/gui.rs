@@ -1,10 +1,39 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{
+    cell::{LazyCell, RefCell},
+    rc::Rc,
+};
 
 use native_windows_gui as nwg;
 use nwg::NativeUi;
 
 use super::usbipd_gui::UsbipdGui;
 use crate::auto_attach::AutoAttacher;
+
+#[derive(Default)]
+pub struct GuiResources {
+    pub embed: nwg::EmbedResource,
+    pub app_icon: nwg::Icon,
+}
+
+// This is fine since these resources are only accessed from the same thread
+#[allow(clippy::declare_interior_mutable_const)]
+pub const RESOURCES: LazyCell<GuiResources> = LazyCell::new(|| {
+    let mut resources = GuiResources::default();
+
+    // Load the embedded resources from the executable
+    nwg::EmbedResource::builder()
+        .build(&mut resources.embed)
+        .expect("Failed to load embedded resources");
+
+    // Load the app icon from the embedded resources
+    nwg::Icon::builder()
+        .source_embed(Some(&resources.embed))
+        .source_embed_str(Some("MAINICON"))
+        .build(&mut resources.app_icon)
+        .expect("Failed to load app icon from embedded resources");
+
+    resources
+});
 
 /// Starts the GUI and runs the event loop.
 ///
@@ -21,7 +50,6 @@ pub fn start(
         .size(16)
         .weight(400)
         .build(&mut font)?;
-
     nwg::Font::set_global_default(Some(font));
 
     let _gui = UsbipdGui::build_ui(UsbipdGui::new(auto_attacher, start_minimized))?;
