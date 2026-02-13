@@ -1,3 +1,4 @@
+mod auto_attach;
 mod device_info;
 
 use std::{
@@ -7,14 +8,15 @@ use std::{
 
 use native_windows_derive::NwgPartial;
 use native_windows_gui as nwg;
-use nwg::stretch::{
+use nwg::{NativeUi, stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
-};
+}};
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE;
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
+use self::auto_attach::AutoAttachWindow;
 use self::device_info::DeviceInfo;
 use crate::auto_attach::AutoAttacher;
 use crate::gui::{
@@ -44,6 +46,8 @@ pub struct ConnectedTab {
     pub auto_attach_notice: Cell<Option<nwg::NoticeSender>>,
 
     connected_devices: RefCell<Vec<usbipd::UsbDevice>>,
+
+    auto_attach_window: RefCell<Option<AutoAttachWindowUi>>,
 
     #[nwg_layout(flex_direction: FlexDirection::Row)]
     connected_tab_layout: nwg::FlexboxLayout,
@@ -321,15 +325,28 @@ impl ConnectedTab {
     }
 
     fn auto_attach_device(&self) {
-        self.run_command(|device| {
-            self.auto_attacher.borrow_mut().add_device(device)?;
+        let selected_index = match self.list_view.selected_item() {
+            Some(index) => index,
+            None => return,
+        };
+        let devices = self.connected_devices.borrow();
+        let device = match devices.get(selected_index) {
+            Some(device) => device,
+            None => return,
+        };
 
-            let auto_attach_notice = self.auto_attach_notice.get().unwrap();
-            auto_attach_notice.notice();
-            self.auto_attach_notice.set(Some(auto_attach_notice));
+        let mut auto_attach_window = self.auto_attach_window.borrow_mut();
+        if auto_attach_window.is_none() {
+            *auto_attach_window = Some(
+                AutoAttachWindowUi::build_ui(Default::default())
+                    .expect("Failed to build AutoAttachWindow"),
+            );
+        }
 
-            Ok(())
-        });
+        if let Some(ref window) = *auto_attach_window {
+            window.update(device);
+            window.window.set_visible(true);
+        }
     }
 
     /// Runs a `command` function on the currently selected device.
