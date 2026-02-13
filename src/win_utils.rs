@@ -27,7 +27,7 @@ pub fn acquire_single_instance_lock() -> bool {
         .collect();
 
     let mutex_handle = unsafe { CreateMutexW(null_mut(), 1, mutex_name.as_ptr()) };
-    if mutex_handle == std::ptr::null_mut() {
+    if mutex_handle.is_null() {
         return false;
     }
 
@@ -139,7 +139,7 @@ impl Default for DeviceNotification {
 
 impl Drop for DeviceNotification {
     fn drop(&mut self) {
-        if self.handle != std::ptr::null_mut() {
+        if !self.handle.is_null() {
             unsafe { CM_Unregister_Notification(self.handle) };
         }
     }
