@@ -1,30 +1,36 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 #![cfg(target_os = "windows")]
 
+mod args;
 mod auto_attach;
 mod gui;
 mod usbipd;
 mod win_utils;
 
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, process::ExitCode, rc::Rc};
 
+use args::Args;
 use auto_attach::AutoAttacher;
 
-fn main() {
+fn main() -> ExitCode {
+    // Parse arguments
+    if let Err(code) = Args::parse() {
+        return code;
+    }
+
     // Ensure that only one instance of the application is running
     if !win_utils::acquire_single_instance_lock() {
         gui::show_multiple_instance_warning();
-        return;
+        return ExitCode::FAILURE;
     }
 
     if !usbipd::check_installed() {
         gui::show_usbipd_not_found_error();
-        return;
+        return ExitCode::FAILURE;
     }
 
     if usbipd::version().major < 4 {
         gui::show_usbipd_untested_version_warning();
-        return;
     }
 
     let auto_attacher = Rc::new(RefCell::new(AutoAttacher::new()));
@@ -33,5 +39,8 @@ fn main() {
 
     if let Err(err) = start {
         gui::show_start_failure(&err.to_string());
+        return ExitCode::FAILURE;
     }
+
+    ExitCode::SUCCESS
 }
