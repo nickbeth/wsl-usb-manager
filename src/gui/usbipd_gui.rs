@@ -1,11 +1,12 @@
 use std::{
     borrow::Cow,
     cell::{Cell, RefCell},
+    ops::Deref,
     rc::Rc,
 };
 
-use native_windows_derive::NwgUi;
 use native_windows_gui as nwg;
+use nwg::{NativeUi, PartialUi};
 
 use super::auto_attach_tab::AutoAttachTab;
 use super::connected_tab::ConnectedTab;
@@ -24,77 +25,36 @@ pub(super) trait GuiTab {
     fn refresh(&self);
 }
 
-#[derive(Default, NwgUi)]
+#[derive(Default)]
 pub struct UsbipdGui {
     device_notification: Cell<DeviceNotification>,
     menu_tray_event_handler: Cell<Option<nwg::EventHandler>>,
     start_minimized: bool,
 
-    #[nwg_resource]
     embed: nwg::EmbedResource,
-
-    #[nwg_resource(source_embed: Some(&data.embed), source_embed_str: Some("MAINICON"))]
     app_icon: nwg::Icon,
 
     // Window
-    #[nwg_control(flags: "MAIN_WINDOW", size: (780, 430), center: true, title: "WSL USB Manager", icon: Some(&data.app_icon))]
-    #[nwg_events(
-        OnInit: [UsbipdGui::init],
-        OnMinMaxInfo: [UsbipdGui::min_max_info(EVT_DATA)],
-        OnWindowClose: [UsbipdGui::hide(SELF, EVT_DATA)]
-    )]
     window: nwg::Window,
-
-    #[nwg_layout(parent: window, auto_spacing: Some(2))]
     window_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: window)]
-    #[nwg_events(OnNotice: [UsbipdGui::refresh])]
     refresh_notice: nwg::Notice,
 
     // Tabs
-    #[nwg_control(parent: window)]
-    #[nwg_layout_item(layout: window_layout)]
     tabs_container: nwg::TabsContainer,
-
-    // Connected devices tab
-    #[nwg_control(parent: tabs_container, text: "Connected")]
     connected_tab: nwg::Tab,
-
-    #[nwg_partial(parent: connected_tab)]
     connected_tab_content: ConnectedTab,
-
-    // Persisted devices tab
-    #[nwg_control(parent: tabs_container, text: "Persisted")]
     persisted_tab: nwg::Tab,
-
-    #[nwg_partial(parent: persisted_tab)]
     persisted_tab_content: PersistedTab,
-
-    #[nwg_control(parent: tabs_container, text: "Auto Attach")]
     auto_attach_tab: nwg::Tab,
-
-    #[nwg_partial(parent: auto_attach_tab)]
     auto_attach_tab_content: AutoAttachTab,
 
     // Tray icon
-    #[nwg_control(icon: Some(&data.app_icon), tip: Some("WSL USB Manager"))]
-    #[nwg_events(OnContextMenu: [UsbipdGui::show_menu_tray], MousePressLeftUp: [UsbipdGui::show])]
     tray: nwg::TrayNotification,
 
     // File menu
-    #[nwg_control(parent: window, text: "File", popup: false)]
     menu_file: nwg::Menu,
-
-    #[nwg_control(parent: menu_file, text: "Refresh")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::refresh])]
     menu_file_refresh: nwg::MenuItem,
-
-    #[nwg_control(parent: menu_file)]
     menu_file_sep1: nwg::MenuSeparator,
-
-    #[nwg_control(parent: menu_file, text: "Exit")]
-    #[nwg_events(OnMenuItemSelected: [UsbipdGui::exit()])]
     menu_file_exit: nwg::MenuItem,
 }
 
@@ -317,5 +277,176 @@ impl UsbipdGui {
 
     fn exit() {
         nwg::stop_thread_dispatch();
+    }
+}
+
+pub struct UsbipdGuiUi {
+    inner: Rc<UsbipdGui>,
+    default_handler: nwg::EventHandler,
+}
+
+impl NativeUi<UsbipdGuiUi> for UsbipdGui {
+    fn build_ui(mut data: Self) -> Result<UsbipdGuiUi, nwg::NwgError> {
+        // Resources
+        nwg::EmbedResource::builder().build(&mut data.embed)?;
+
+        nwg::Icon::builder()
+            .source_embed(Some(&data.embed))
+            .source_embed_str(Some("MAINICON"))
+            .build(&mut data.app_icon)?;
+
+        // Controls (parent-first order)
+        nwg::Window::builder()
+            .flags(nwg::WindowFlags::MAIN_WINDOW)
+            .size((780, 430))
+            .center(true)
+            .title("WSL USB Manager")
+            .icon(Some(&data.app_icon))
+            .build(&mut data.window)?;
+
+        nwg::Notice::builder()
+            .parent(&data.window)
+            .build(&mut data.refresh_notice)?;
+
+        nwg::TabsContainer::builder()
+            .parent(&data.window)
+            .build(&mut data.tabs_container)?;
+
+        nwg::Tab::builder()
+            .parent(&data.tabs_container)
+            .text("Connected")
+            .build(&mut data.connected_tab)?;
+
+        nwg::Tab::builder()
+            .parent(&data.tabs_container)
+            .text("Persisted")
+            .build(&mut data.persisted_tab)?;
+
+        nwg::Tab::builder()
+            .parent(&data.tabs_container)
+            .text("Auto Attach")
+            .build(&mut data.auto_attach_tab)?;
+
+        nwg::TrayNotification::builder()
+            .parent(&data.window)
+            .icon(Some(&data.app_icon))
+            .tip(Some("WSL USB Manager"))
+            .build(&mut data.tray)?;
+
+        nwg::Menu::builder()
+            .parent(&data.window)
+            .text("File")
+            .popup(false)
+            .build(&mut data.menu_file)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu_file)
+            .text("Refresh")
+            .build(&mut data.menu_file_refresh)?;
+
+        nwg::MenuSeparator::builder()
+            .parent(&data.menu_file)
+            .build(&mut data.menu_file_sep1)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu_file)
+            .text("Exit")
+            .build(&mut data.menu_file_exit)?;
+
+        // Build partials
+        ConnectedTab::build_partial(&mut data.connected_tab_content, Some(&data.connected_tab))?;
+        PersistedTab::build_partial(&mut data.persisted_tab_content, Some(&data.persisted_tab))?;
+        AutoAttachTab::build_partial(
+            &mut data.auto_attach_tab_content,
+            Some(&data.auto_attach_tab),
+        )?;
+
+        // Wrap in Rc
+        let inner = Rc::new(data);
+        // Bind events
+        let evt_ui = Rc::downgrade(&inner);
+
+        let window_handle = inner.window.handle;
+        let default_handler =
+            nwg::full_bind_event_handler(&window_handle, move |evt, evt_data, handle| {
+                if let Some(ui) = evt_ui.upgrade() {
+                    match evt {
+                        nwg::Event::OnInit => {
+                            if handle == ui.window.handle {
+                                UsbipdGui::init(&ui);
+                            }
+                        }
+                        nwg::Event::OnMinMaxInfo => {
+                            if handle == ui.window.handle {
+                                UsbipdGui::min_max_info(&evt_data);
+                            }
+                        }
+                        nwg::Event::OnWindowClose => {
+                            if handle == ui.window.handle {
+                                UsbipdGui::hide(&ui, &evt_data);
+                            }
+                        }
+                        nwg::Event::OnNotice => {
+                            if handle == ui.refresh_notice.handle {
+                                UsbipdGui::refresh(&ui);
+                            }
+                        }
+                        nwg::Event::OnContextMenu => {
+                            if handle == ui.tray.handle {
+                                UsbipdGui::show_menu_tray(&ui);
+                            }
+                        }
+                        nwg::Event::OnMousePress(nwg::MousePressEvent::MousePressLeftUp) => {
+                            if handle == ui.tray.handle {
+                                UsbipdGui::show(&ui);
+                            }
+                        }
+                        nwg::Event::OnMenuItemSelected => {
+                            if handle == ui.menu_file_refresh.handle {
+                                UsbipdGui::refresh(&ui);
+                            }
+                            if handle == ui.menu_file_exit.handle {
+                                UsbipdGui::exit();
+                            }
+                        }
+                        _ => {}
+                    }
+
+                    // Forward events to partials
+                    ui.connected_tab_content
+                        .process_event(evt, &evt_data, handle);
+                    ui.persisted_tab_content
+                        .process_event(evt, &evt_data, handle);
+                    ui.auto_attach_tab_content
+                        .process_event(evt, &evt_data, handle);
+                }
+            });
+
+        let ui = UsbipdGuiUi {
+            inner,
+            default_handler,
+        };
+
+        // Build layouts
+        nwg::FlexboxLayout::builder()
+            .parent(&ui.window)
+            .auto_spacing(Some(2))
+            .child(&ui.tabs_container)
+            .build(&ui.window_layout)?;
+
+        Ok(ui)
+    }
+}
+
+impl Drop for UsbipdGuiUi {
+    fn drop(&mut self) {
+        nwg::unbind_event_handler(&self.default_handler);
+    }
+}
+
+impl Deref for UsbipdGuiUi {
+    type Target = UsbipdGui;
+    fn deref(&self) -> &Self::Target {
+        &self.inner
     }
 }

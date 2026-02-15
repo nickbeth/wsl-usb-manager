@@ -5,8 +5,8 @@ use std::{
     rc::Rc,
 };
 
-use native_windows_derive::NwgPartial;
 use native_windows_gui as nwg;
+use nwg::PartialUi;
 use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
@@ -33,7 +33,7 @@ const PADDING_LEFT: Rect<D> = Rect {
 const DETAILS_PANEL_WIDTH: f32 = 285.0;
 const DETAILS_PANEL_PADDING: u32 = 4;
 
-#[derive(Default, NwgPartial)]
+#[derive(Default)]
 pub struct ConnectedTab {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
 
@@ -45,87 +45,30 @@ pub struct ConnectedTab {
 
     connected_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
-    #[nwg_layout(flex_direction: FlexDirection::Row)]
     connected_tab_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(list_style: nwg::ListViewStyle::Detailed, focus: true,
-        flags: "VISIBLE|SINGLE_SELECTION|TAB_STOP",
-        ex_flags: nwg::ListViewExFlags::FULL_ROW_SELECT,
-    )]
-    #[nwg_events(OnListViewRightClick: [ConnectedTab::show_menu],
-        OnListViewItemChanged: [ConnectedTab::update_device_details]
-    )]
-    #[nwg_layout_item(layout: connected_tab_layout, flex_grow: 1.0)]
     list_view: nwg::ListView,
 
     // Device info
-    #[nwg_control]
-    #[nwg_layout_item(layout: connected_tab_layout, margin: PADDING_LEFT,
-        size: Size { width: D::Points(DETAILS_PANEL_WIDTH), height: D::Auto },
-    )]
     details_frame: nwg::Frame,
-
-    #[nwg_layout(parent: details_frame, flex_direction: FlexDirection::Column,
-        auto_spacing: Some(DETAILS_PANEL_PADDING))]
     details_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, flex_grow: 1.0)]
     // Multi-line RichLabels send a WM_CLOSE message when the ESC key is pressed
-    #[nwg_events(OnWindowClose: [ConnectedTab::inhibit_close(EVT_DATA)])]
     device_info_frame: nwg::Frame,
-
-    #[nwg_partial(parent: device_info_frame)]
     device_info: DeviceInfo,
 
     // Buttons
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, size: Size { width: D::Auto, height: D::Points(25.0) })]
     buttons_frame: nwg::Frame,
-
-    #[nwg_layout(parent: buttons_frame, flex_direction: FlexDirection::RowReverse, auto_spacing: None)]
     buttons_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: buttons_frame, text: "Attach")]
-    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
-    #[nwg_events(OnButtonClick: [ConnectedTab::attach_detach_device])]
     attach_detach_button: nwg::Button,
-
-    #[nwg_control(parent: buttons_frame, text: "Bind")]
-    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
-    #[nwg_events(OnButtonClick: [ConnectedTab::bind_unbind_device])]
     bind_unbind_button: nwg::Button,
-
-    #[nwg_control(parent: buttons_frame, text: "Auto Attach")]
-    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
-    #[nwg_events(OnButtonClick: [ConnectedTab::auto_attach_device])]
     auto_attach_button: nwg::Button,
 
     // Device context menu
-    #[nwg_control(text: "Device", popup: true)]
     menu: nwg::Menu,
-
-    #[nwg_control(parent: menu, text: "Attach")]
-    #[nwg_events(OnMenuItemSelected: [ConnectedTab::attach_device])]
     menu_attach: nwg::MenuItem,
-
-    #[nwg_control(parent: menu, text: "Detach")]
-    #[nwg_events(OnMenuItemSelected: [ConnectedTab::detach_device])]
     menu_detach: nwg::MenuItem,
-
-    #[nwg_control(parent: menu)]
     menu_sep: nwg::MenuSeparator,
-
-    #[nwg_control(parent: menu, text: "Bind")]
-    #[nwg_events(OnMenuItemSelected: [ConnectedTab::bind_device])]
     menu_bind: nwg::MenuItem,
-
-    #[nwg_control(parent: menu, text: "Bind (force)")]
-    #[nwg_events(OnMenuItemSelected: [ConnectedTab::bind_device_force])]
     menu_bind_force: nwg::MenuItem,
-
-    #[nwg_control(parent: menu, text: "Unbind")]
-    #[nwg_events(OnMenuItemSelected: [ConnectedTab::unbind_device])]
     menu_unbind: nwg::MenuItem,
 }
 
@@ -410,5 +353,201 @@ impl GuiTab for ConnectedTab {
     fn refresh(&self) {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
+    }
+}
+
+impl PartialUi for ConnectedTab {
+    fn build_partial<W: Into<nwg::ControlHandle>>(
+        data: &mut Self,
+        parent: Option<W>,
+    ) -> Result<(), nwg::NwgError> {
+        let parent = parent.map(|p| p.into());
+        let parent_ref = parent.as_ref();
+
+        // Controls
+        nwg::ListView::builder()
+            .list_style(nwg::ListViewStyle::Detailed)
+            .focus(true)
+            .flags(
+                nwg::ListViewFlags::VISIBLE
+                    | nwg::ListViewFlags::SINGLE_SELECTION
+                    | nwg::ListViewFlags::TAB_STOP,
+            )
+            .ex_flags(nwg::ListViewExFlags::FULL_ROW_SELECT)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.list_view)?;
+
+        nwg::Frame::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.details_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.device_info_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.buttons_frame)?;
+
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Attach")
+            .build(&mut data.attach_detach_button)?;
+
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Bind")
+            .build(&mut data.bind_unbind_button)?;
+
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Auto Attach")
+            .build(&mut data.auto_attach_button)?;
+
+        nwg::Menu::builder()
+            .text("Device")
+            .popup(true)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.menu)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Attach")
+            .build(&mut data.menu_attach)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Detach")
+            .build(&mut data.menu_detach)?;
+
+        nwg::MenuSeparator::builder()
+            .parent(&data.menu)
+            .build(&mut data.menu_sep)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Bind")
+            .build(&mut data.menu_bind)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Bind (force)")
+            .build(&mut data.menu_bind_force)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Unbind")
+            .build(&mut data.menu_unbind)?;
+
+        // Build nested partial
+        DeviceInfo::build_partial(&mut data.device_info, Some(&data.device_info_frame))?;
+
+        // Build layouts
+        nwg::FlexboxLayout::builder()
+            .parent(parent_ref.unwrap())
+            .flex_direction(FlexDirection::Row)
+            // List view
+            .child(&data.list_view)
+            .child_flex_grow(1.0)
+            // Details frame
+            .child(&data.details_frame)
+            .child_margin(PADDING_LEFT)
+            .child_size(Size {
+                width: D::Points(DETAILS_PANEL_WIDTH),
+                height: D::Auto,
+            })
+            .build(&data.connected_tab_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.details_frame)
+            .flex_direction(FlexDirection::Column)
+            .auto_spacing(Some(DETAILS_PANEL_PADDING))
+            // Device info frame
+            .child(&data.device_info_frame)
+            .child_flex_grow(1.0)
+            // Buttons frame
+            .child(&data.buttons_frame)
+            .child_size(Size {
+                width: D::Auto,
+                height: D::Points(25.0),
+            })
+            .build(&data.details_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.buttons_frame)
+            .flex_direction(FlexDirection::RowReverse)
+            .auto_spacing(None)
+            .child(&data.attach_detach_button)
+            .child_flex_grow(0.33)
+            .child(&data.bind_unbind_button)
+            .child_flex_grow(0.33)
+            .child(&data.auto_attach_button)
+            .child_flex_grow(0.33)
+            .build(&data.buttons_layout)?;
+
+        Ok(())
+    }
+
+    fn process_event(
+        &self,
+        evt: nwg::Event,
+        evt_data: &nwg::EventData,
+        handle: nwg::ControlHandle,
+    ) {
+        match evt {
+            nwg::Event::OnListViewRightClick => {
+                if handle == self.list_view.handle {
+                    ConnectedTab::show_menu(self);
+                }
+            }
+            nwg::Event::OnListViewItemChanged => {
+                if handle == self.list_view.handle {
+                    ConnectedTab::update_device_details(self);
+                }
+            }
+            nwg::Event::OnWindowClose => {
+                if handle == self.device_info_frame.handle {
+                    ConnectedTab::inhibit_close(evt_data);
+                }
+            }
+            nwg::Event::OnButtonClick => {
+                if handle == self.attach_detach_button.handle {
+                    ConnectedTab::attach_detach_device(self);
+                }
+                if handle == self.bind_unbind_button.handle {
+                    ConnectedTab::bind_unbind_device(self);
+                }
+                if handle == self.auto_attach_button.handle {
+                    ConnectedTab::auto_attach_device(self);
+                }
+            }
+            nwg::Event::OnMenuItemSelected => {
+                if handle == self.menu_attach.handle {
+                    ConnectedTab::attach_device(self);
+                }
+                if handle == self.menu_detach.handle {
+                    ConnectedTab::detach_device(self);
+                }
+                if handle == self.menu_bind.handle {
+                    ConnectedTab::bind_device(self);
+                }
+                if handle == self.menu_bind_force.handle {
+                    ConnectedTab::bind_device_force(self);
+                }
+                if handle == self.menu_unbind.handle {
+                    ConnectedTab::unbind_device(self);
+                }
+            }
+            _ => {}
+        }
+
+        // Forward to nested partial
+        self.device_info.process_event(evt, evt_data, handle);
+    }
+
+    fn handles(&self) -> Vec<&nwg::ControlHandle> {
+        Vec::new()
     }
 }
