@@ -5,8 +5,8 @@ use std::{
     rc::Rc,
 };
 
-use native_windows_derive::NwgPartial;
 use native_windows_gui as nwg;
+use nwg::PartialUi;
 use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
@@ -27,7 +27,7 @@ const PADDING_LEFT: Rect<D> = Rect {
 const DETAILS_PANEL_WIDTH: f32 = 285.0;
 const DETAILS_PANEL_PADDING: u32 = 4;
 
-#[derive(Default, NwgPartial)]
+#[derive(Default)]
 pub struct AutoAttachTab {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
 
@@ -35,62 +35,25 @@ pub struct AutoAttachTab {
 
     auto_attach_profiles: RefCell<Vec<auto_attach::AutoAttachProfile>>,
 
-    #[nwg_control]
-    #[nwg_events(OnNotice: [AutoAttachTab::refresh])]
     pub refresh_notice: nwg::Notice,
 
-    #[nwg_layout(flex_direction: FlexDirection::Row)]
     tab_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(list_style: nwg::ListViewStyle::Detailed, focus: true,
-        flags: "VISIBLE|SINGLE_SELECTION|TAB_STOP",
-        ex_flags: nwg::ListViewExFlags::FULL_ROW_SELECT,
-    )]
-    #[nwg_events(OnListViewRightClick: [AutoAttachTab::show_menu],
-        OnListViewItemChanged: [AutoAttachTab::update_auto_attach_details]
-    )]
-    #[nwg_layout_item(layout: tab_layout, flex_grow: 1.0)]
     list_view: nwg::ListView,
 
     // Profile info
-    #[nwg_control]
-    #[nwg_layout_item(layout: tab_layout, margin: PADDING_LEFT,
-        size: Size { width: D::Points(DETAILS_PANEL_WIDTH), height: D::Auto },
-    )]
     details_frame: nwg::Frame,
-
-    #[nwg_layout(parent: details_frame, flex_direction: FlexDirection::Column,
-        auto_spacing: Some(DETAILS_PANEL_PADDING))]
     details_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, flex_grow: 1.0)]
     // Multi-line RichLabels send a WM_CLOSE message when the ESC key is pressed
-    #[nwg_events(OnWindowClose: [AutoAttachTab::inhibit_close(EVT_DATA)])]
     details_info_frame: nwg::Frame,
-
-    #[nwg_partial(parent: details_info_frame)]
     auto_attach_info: AutoAttachInfo,
 
     // Buttons
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, size: Size { width: D::Auto, height: D::Points(25.0) })]
     buttons_frame: nwg::Frame,
-
-    #[nwg_layout(parent: buttons_frame, flex_direction: FlexDirection::RowReverse, auto_spacing: None)]
     buttons_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: buttons_frame, text: "Delete")]
-    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
-    #[nwg_events(OnButtonClick: [AutoAttachTab::delete])]
     button_delete: nwg::Button,
 
     // Device context menu
-    #[nwg_control(text: "Device", popup: true)]
     menu: nwg::Menu,
-
-    #[nwg_control(parent: menu, text: "Delete")]
-    #[nwg_events(OnMenuItemSelected: [AutoAttachTab::delete])]
     menu_delete: nwg::MenuItem,
 }
 
@@ -215,5 +178,154 @@ impl GuiTab for AutoAttachTab {
     fn refresh(&self) {
         self.refresh_list();
         self.update_auto_attach_details();
+    }
+}
+
+impl PartialUi for AutoAttachTab {
+    fn build_partial<W: Into<nwg::ControlHandle>>(
+        data: &mut Self,
+        parent: Option<W>,
+    ) -> Result<(), nwg::NwgError> {
+        let parent = parent.map(|p| p.into());
+        let parent_ref = parent.as_ref();
+
+        // Controls
+        nwg::Notice::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.refresh_notice)?;
+
+        nwg::ListView::builder()
+            .list_style(nwg::ListViewStyle::Detailed)
+            .focus(true)
+            .flags(
+                nwg::ListViewFlags::VISIBLE
+                    | nwg::ListViewFlags::SINGLE_SELECTION
+                    | nwg::ListViewFlags::TAB_STOP,
+            )
+            .ex_flags(nwg::ListViewExFlags::FULL_ROW_SELECT)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.list_view)?;
+
+        nwg::Frame::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.details_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.details_info_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.buttons_frame)?;
+
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Delete")
+            .build(&mut data.button_delete)?;
+
+        nwg::Menu::builder()
+            .text("Device")
+            .popup(true)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.menu)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Delete")
+            .build(&mut data.menu_delete)?;
+
+        // Build nested partial
+        AutoAttachInfo::build_partial(&mut data.auto_attach_info, Some(&data.details_info_frame))?;
+
+        // Build layouts
+        nwg::FlexboxLayout::builder()
+            .parent(parent_ref.unwrap())
+            .flex_direction(FlexDirection::Row)
+            // List view
+            .child(&data.list_view)
+            .child_flex_grow(1.0)
+            // Details frame
+            .child(&data.details_frame)
+            .child_margin(PADDING_LEFT)
+            .child_size(Size {
+                width: D::Points(DETAILS_PANEL_WIDTH),
+                height: D::Auto,
+            })
+            .build(&data.tab_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.details_frame)
+            .flex_direction(FlexDirection::Column)
+            .auto_spacing(Some(DETAILS_PANEL_PADDING))
+            // Details info frame
+            .child(&data.details_info_frame)
+            .child_flex_grow(1.0)
+            // Buttons frame
+            .child(&data.buttons_frame)
+            .child_size(Size {
+                width: D::Auto,
+                height: D::Points(25.0),
+            })
+            .build(&data.details_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.buttons_frame)
+            .flex_direction(FlexDirection::RowReverse)
+            .auto_spacing(None)
+            .child(&data.button_delete)
+            .child_flex_grow(0.33)
+            .build(&data.buttons_layout)?;
+
+        Ok(())
+    }
+
+    fn process_event(
+        &self,
+        evt: nwg::Event,
+        evt_data: &nwg::EventData,
+        handle: nwg::ControlHandle,
+    ) {
+        match evt {
+            nwg::Event::OnNotice => {
+                if handle == self.refresh_notice.handle {
+                    GuiTab::refresh(self);
+                }
+            }
+            nwg::Event::OnListViewRightClick => {
+                if handle == self.list_view.handle {
+                    AutoAttachTab::show_menu(self);
+                }
+            }
+            nwg::Event::OnListViewItemChanged => {
+                if handle == self.list_view.handle {
+                    AutoAttachTab::update_auto_attach_details(self);
+                }
+            }
+            nwg::Event::OnWindowClose => {
+                if handle == self.details_info_frame.handle {
+                    AutoAttachTab::inhibit_close(evt_data);
+                }
+            }
+            nwg::Event::OnButtonClick => {
+                if handle == self.button_delete.handle {
+                    AutoAttachTab::delete(self);
+                }
+            }
+            nwg::Event::OnMenuItemSelected => {
+                if handle == self.menu_delete.handle {
+                    AutoAttachTab::delete(self);
+                }
+            }
+            _ => {}
+        }
+
+        // Forward to nested partial
+        self.auto_attach_info.process_event(evt, evt_data, handle);
+    }
+
+    fn handles(&self) -> Vec<&nwg::ControlHandle> {
+        Vec::new()
     }
 }

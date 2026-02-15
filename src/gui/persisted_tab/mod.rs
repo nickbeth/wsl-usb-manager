@@ -2,8 +2,8 @@ mod persisted_info;
 
 use std::cell::{Cell, RefCell};
 
-use native_windows_derive::NwgPartial;
 use native_windows_gui as nwg;
+use nwg::PartialUi;
 use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
@@ -27,65 +27,30 @@ const PADDING_LEFT: Rect<D> = Rect {
 const DETAILS_PANEL_WIDTH: f32 = 285.0;
 const DETAILS_PANEL_PADDING: u32 = 4;
 
-#[derive(Default, NwgPartial)]
+#[derive(Default)]
 pub struct PersistedTab {
     window: Cell<nwg::ControlHandle>,
     shield_bitmap: Cell<nwg::Bitmap>,
 
     persisted_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
-    #[nwg_layout(flex_direction: FlexDirection::Row)]
     persisted_tab_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(list_style: nwg::ListViewStyle::Detailed, focus: true,
-        flags: "VISIBLE|SINGLE_SELECTION|TAB_STOP",
-        ex_flags: nwg::ListViewExFlags::FULL_ROW_SELECT,
-    )]
-    #[nwg_events(OnListViewRightClick: [PersistedTab::show_menu],
-        OnListViewItemChanged: [PersistedTab::update_persisted_details]
-    )]
-    #[nwg_layout_item(layout: persisted_tab_layout, flex_grow: 1.0)]
     list_view: nwg::ListView,
 
     // Persisted info
-    #[nwg_control]
-    #[nwg_layout_item(layout: persisted_tab_layout, margin: PADDING_LEFT,
-        size: Size { width: D::Points(DETAILS_PANEL_WIDTH), height: D::Auto },
-    )]
     details_frame: nwg::Frame,
-
-    #[nwg_layout(parent: details_frame, flex_direction: FlexDirection::Column,
-        auto_spacing: Some(DETAILS_PANEL_PADDING))]
     details_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, flex_grow: 1.0)]
     // Multi-line RichLabels send a WM_CLOSE message when the ESC key is pressed
-    #[nwg_events(OnWindowClose: [PersistedTab::inhibit_close(EVT_DATA)])]
     persisted_info_frame: nwg::Frame,
-
-    #[nwg_partial(parent: persisted_info_frame)]
     persisted_info: PersistedInfo,
 
     // Buttons
-    #[nwg_control(parent: details_frame, flags: "VISIBLE")]
-    #[nwg_layout_item(layout: details_layout, size: Size { width: D::Auto, height: D::Points(25.0) })]
     buttons_frame: nwg::Frame,
-
-    #[nwg_layout(parent: buttons_frame, flex_direction: FlexDirection::RowReverse, auto_spacing: None)]
     buttons_layout: nwg::FlexboxLayout,
-
-    #[nwg_control(parent: buttons_frame, text: "Delete")]
-    #[nwg_layout_item(layout: buttons_layout, flex_grow: 0.33)]
-    #[nwg_events(OnButtonClick: [PersistedTab::delete])]
     delete_button: nwg::Button,
 
     // Device context menu
-    #[nwg_control(text: "Device", popup: true)]
     menu: nwg::Menu,
-
-    #[nwg_control(parent: menu, text: "Delete")]
-    #[nwg_events(OnMenuItemSelected: [PersistedTab::delete])]
     menu_delete: nwg::MenuItem,
 }
 
@@ -223,5 +188,145 @@ impl GuiTab for PersistedTab {
     fn refresh(&self) {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
+    }
+}
+
+impl PartialUi for PersistedTab {
+    fn build_partial<W: Into<nwg::ControlHandle>>(
+        data: &mut Self,
+        parent: Option<W>,
+    ) -> Result<(), nwg::NwgError> {
+        let parent = parent.map(|p| p.into());
+        let parent_ref = parent.as_ref();
+
+        // Controls
+        nwg::ListView::builder()
+            .list_style(nwg::ListViewStyle::Detailed)
+            .focus(true)
+            .flags(
+                nwg::ListViewFlags::VISIBLE
+                    | nwg::ListViewFlags::SINGLE_SELECTION
+                    | nwg::ListViewFlags::TAB_STOP,
+            )
+            .ex_flags(nwg::ListViewExFlags::FULL_ROW_SELECT)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.list_view)?;
+
+        nwg::Frame::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.details_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.persisted_info_frame)?;
+
+        nwg::Frame::builder()
+            .parent(&data.details_frame)
+            .flags(nwg::FrameFlags::VISIBLE)
+            .build(&mut data.buttons_frame)?;
+
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Delete")
+            .build(&mut data.delete_button)?;
+
+        nwg::Menu::builder()
+            .text("Device")
+            .popup(true)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.menu)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Delete")
+            .build(&mut data.menu_delete)?;
+
+        // Build nested partial
+        PersistedInfo::build_partial(&mut data.persisted_info, Some(&data.persisted_info_frame))?;
+
+        // Build layouts
+        nwg::FlexboxLayout::builder()
+            .parent(parent_ref.unwrap())
+            .flex_direction(FlexDirection::Row)
+            // List view
+            .child(&data.list_view)
+            .child_flex_grow(1.0)
+            // Details frame
+            .child(&data.details_frame)
+            .child_margin(PADDING_LEFT)
+            .child_size(Size {
+                width: D::Points(DETAILS_PANEL_WIDTH),
+                height: D::Auto,
+            })
+            .build(&data.persisted_tab_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.details_frame)
+            .flex_direction(FlexDirection::Column)
+            .auto_spacing(Some(DETAILS_PANEL_PADDING))
+            // Persisted info frame
+            .child(&data.persisted_info_frame)
+            .child_flex_grow(1.0)
+            // Buttons frame
+            .child(&data.buttons_frame)
+            .child_size(Size {
+                width: D::Auto,
+                height: D::Points(25.0),
+            })
+            .build(&data.details_layout)?;
+
+        nwg::FlexboxLayout::builder()
+            .parent(&data.buttons_frame)
+            .flex_direction(FlexDirection::RowReverse)
+            .auto_spacing(None)
+            .child(&data.delete_button)
+            .child_flex_grow(0.33)
+            .build(&data.buttons_layout)?;
+
+        Ok(())
+    }
+
+    fn process_event(
+        &self,
+        evt: nwg::Event,
+        evt_data: &nwg::EventData,
+        handle: nwg::ControlHandle,
+    ) {
+        match evt {
+            nwg::Event::OnListViewRightClick => {
+                if handle == self.list_view.handle {
+                    PersistedTab::show_menu(self);
+                }
+            }
+            nwg::Event::OnListViewItemChanged => {
+                if handle == self.list_view.handle {
+                    PersistedTab::update_persisted_details(self);
+                }
+            }
+            nwg::Event::OnWindowClose => {
+                if handle == self.persisted_info_frame.handle {
+                    PersistedTab::inhibit_close(evt_data);
+                }
+            }
+            nwg::Event::OnButtonClick => {
+                if handle == self.delete_button.handle {
+                    PersistedTab::delete(self);
+                }
+            }
+            nwg::Event::OnMenuItemSelected => {
+                if handle == self.menu_delete.handle {
+                    PersistedTab::delete(self);
+                }
+            }
+            _ => {}
+        }
+
+        // Forward to nested partial
+        self.persisted_info.process_event(evt, evt_data, handle);
+    }
+
+    fn handles(&self) -> Vec<&nwg::ControlHandle> {
+        Vec::new()
     }
 }
