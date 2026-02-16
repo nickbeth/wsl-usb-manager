@@ -17,7 +17,7 @@ pub fn start(
 
     let mut font = nwg::Font::default();
     nwg::Font::builder()
-        .family("Segoe UI")
+        .family("Segoe UI Variable Text")
         .size(16)
         .weight(400)
         .build(&mut font)?;
