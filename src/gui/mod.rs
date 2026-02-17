@@ -9,5 +9,6 @@ mod gui;
 mod nwg_ext;
 mod persisted_tab;
 mod usbipd_gui;
+mod helpers;
 
 pub use gui::*;
