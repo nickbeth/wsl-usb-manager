@@ -13,6 +13,7 @@ use super::connected_tab::ConnectedTab;
 use super::persisted_tab::PersistedTab;
 use crate::{
     auto_attach::AutoAttacher,
+    gui::helpers,
     win_utils::{self, DeviceNotification},
 };
 use crate::{
@@ -151,23 +152,7 @@ impl UsbipdGui {
 
             // Truncate long device names
             const MAX_LENGTH: usize = 30;
-            let char_count = name.chars().count();
-
-            let description = if char_count <= MAX_LENGTH {
-                Cow::Borrowed(name)
-            } else {
-                let remaining = MAX_LENGTH - 3;
-                let keep_start = remaining / 2;
-                let keep_end = remaining - keep_start;
-
-                // Calculate byte positions for cutting the str
-                let (cut_start_pos, _) = name.char_indices().nth(keep_start).unwrap();
-                let (cut_end_pos, _) = name.char_indices().nth_back(keep_end - 1).unwrap();
-
-                let start_part = name[..cut_start_pos].trim_end();
-                let end_part = name[cut_end_pos..].trim_start();
-                Cow::Owned(format!("{start_part}...{end_part}"))
-            };
+            let description = helpers::ellipsize_middle(name, MAX_LENGTH);
 
             let menu_item = self
                 .new_menu_item(menu_tray.handle, &description, false, device.is_attached())

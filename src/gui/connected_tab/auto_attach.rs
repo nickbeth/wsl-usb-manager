@@ -10,7 +10,11 @@ use nwg::stretch::{
     style::{Dimension as D, Dimension::Points as Pt, FlexDirection},
 };
 
-use crate::{auto_attach::AutoAttacher, gui::RESOURCES, usbipd::UsbDevice};
+use crate::{
+    auto_attach::AutoAttacher,
+    gui::{RESOURCES, helpers},
+    usbipd::UsbDevice,
+};
 
 #[derive(Default, Clone, Copy, PartialEq, Eq)]
 enum AutoAttachMode {
@@ -131,8 +135,12 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
             .unwrap_or("Unknown device");
         let bus_id = data.device.bus_id.as_deref().unwrap_or("Unknown port");
 
+        // Truncate long descriptions
+        const MAX_LENGTH: usize = 50;
+        let description = helpers::ellipsize_middle(description, MAX_LENGTH);
+
         // Compute centered position relative to parent window (DPI-aware)
-        let child_size = (360, 200);
+        let child_size = (420, 200);
         let (px, py) = data.parent_window.position();
         let (pw, ph) = data.parent_window.size();
         let position = (
