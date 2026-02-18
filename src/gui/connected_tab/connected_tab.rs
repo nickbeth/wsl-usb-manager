@@ -16,8 +16,8 @@ use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 use super::device_info::DeviceInfo;
 use crate::gui::{
     connected_tab::auto_attach::AutoAttachWindowUi,
+    main_window::GuiTab,
     nwg_ext::{BitmapEx, MenuItemEx},
-    usbipd_gui::GuiTab,
 };
 use crate::usbipd::{self, UsbDevice, UsbipState};
 use crate::{auto_attach::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
