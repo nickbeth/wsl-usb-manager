@@ -6,9 +6,10 @@ mod auto_attach_tab;
 mod connected_tab;
 #[allow(clippy::module_inception)]
 mod gui;
+mod helpers;
+mod main_window;
 mod nwg_ext;
 mod persisted_tab;
-mod usbipd_gui;
-mod helpers;
+mod tray;
 
 pub use gui::*;

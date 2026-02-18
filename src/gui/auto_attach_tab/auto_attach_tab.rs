@@ -13,7 +13,7 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 
 use super::auto_attach_info::AutoAttachInfo;
 use crate::auto_attach::{self, AutoAttachProfile, AutoAttacher};
-use crate::gui::usbipd_gui::GuiTab;
+use crate::gui::main_window::GuiTab;
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),

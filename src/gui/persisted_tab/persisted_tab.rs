@@ -11,8 +11,8 @@ use windows_sys::Win32::UI::{Controls::LVSCW_AUTOSIZE_USEHEADER, Shell::SIID_SHI
 
 use super::persisted_info::PersistedInfo;
 use crate::gui::{
+    main_window::GuiTab,
     nwg_ext::{BitmapEx, MenuItemEx},
-    usbipd_gui::GuiTab,
 };
 use crate::usbipd::{self, UsbDevice};
 

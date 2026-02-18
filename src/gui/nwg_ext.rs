@@ -1,14 +1,38 @@
 use native_windows_gui as nwg;
 
-use windows_sys::Win32::Foundation::HANDLE;
+use windows_sys::Win32::Foundation::{HANDLE, HWND};
 use windows_sys::Win32::Graphics::Gdi::DeleteObject;
 use windows_sys::Win32::UI::Shell::{
     SHGSI_ICON, SHGSI_SMALLICON, SHGetStockIconInfo, SHSTOCKICONID, SHSTOCKICONINFO,
 };
 use windows_sys::Win32::UI::WindowsAndMessaging::{
-    CopyImage, DestroyIcon, GetIconInfoExW, HMENU, ICONINFOEXW, IMAGE_BITMAP, LR_CREATEDIBSECTION,
-    MENUITEMINFOW, MF_BYCOMMAND, MIIM_BITMAP, SetMenuItemInfoW,
+    CopyImage, DestroyIcon, GetIconInfoExW, HMENU, ICONINFOEXW, IMAGE_BITMAP, IsIconic,
+    LR_CREATEDIBSECTION, MENUITEMINFOW, MF_BYCOMMAND, MIIM_BITMAP, SetForegroundWindow,
+    SetMenuItemInfoW,
 };
+
+/// Extends [`nwg::Window`] with additional functionality.
+pub trait WindowEx {
+    /// Returns `true` if the window is minimized (iconic).
+    fn is_minimized(&self) -> bool;
+
+    /// Brings the window to the foreground and activates it.
+    fn set_foreground(&self);
+}
+
+impl WindowEx for nwg::Window {
+    fn is_minimized(&self) -> bool {
+        let hwnd = self.handle.hwnd().unwrap() as HWND;
+        unsafe { IsIconic(hwnd) != 0 }
+    }
+
+    fn set_foreground(&self) {
+        let hwnd = self.handle.hwnd().unwrap() as HWND;
+        unsafe {
+            SetForegroundWindow(hwnd);
+        }
+    }
+}
 
 /// Extends [`nwg::Bitmap`] with additional functionality.
 pub trait BitmapEx {

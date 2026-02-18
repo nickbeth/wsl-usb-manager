@@ -4,10 +4,8 @@ use std::{
 };
 
 use native_windows_gui as nwg;
-use nwg::NativeUi;
 
-use super::usbipd_gui::UsbipdGui;
-use crate::auto_attach::AutoAttacher;
+use crate::{auto_attach::AutoAttacher, gui::tray::Tray};
 
 #[derive(Default)]
 pub struct GuiResources {
@@ -52,7 +50,7 @@ pub fn start(
         .build(&mut font)?;
     nwg::Font::set_global_default(Some(font));
 
-    let _gui = UsbipdGui::build_ui(UsbipdGui::new(auto_attacher, start_minimized))?;
+    let _tray = Tray::build_ui(Tray::new(auto_attacher), start_minimized)?;
 
     // Run the event loop
     nwg::dispatch_thread_events();
