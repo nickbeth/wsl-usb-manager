@@ -1,5 +1,5 @@
-//! This module provides objects and functions for interacting with the `usbipd`
-//! executable and the USB devices it manages.
+//! This module provides objects and functions for interacting with the `usbipd` executable
+//! and the USB devices it manages.
 
 use std::fmt::Display;
 use std::os::windows::process::CommandExt;
@@ -108,10 +108,9 @@ impl UsbDevice {
         // XXXX
         let serial = instance_id.split('\\').nth(2)?;
 
-        // Windows generates instance IDs for devices that do not provide a
-        // serial number. Instance IDs are not persistent across disconnections,
-        // therefore they do cannot be used to uniquely identify devices
-        // They can be recognized by the presence of ampersands
+        // Windows generates instance IDs for devices that do not provide a serial number.
+        // Instance IDs are not persistent across disconnections, therefore they do cannot be used
+        // to uniquely identify devices. They can be recognized by the presence of ampersands.
         if serial.contains('&') {
             None
         } else {
@@ -140,9 +139,9 @@ impl UsbDevice {
             .ok_or("The device does not have a bus ID.".to_owned())?;
 
         let args = if force {
-            ["bind", "--force", "--busid", bus_id].to_vec()
+            vec!["bind", "--force", "--busid", bus_id]
         } else {
-            ["bind", "--busid", bus_id].to_vec()
+            vec!["bind", "--busid", bus_id]
         };
 
         usbipd(&args).or_else(|err| {
@@ -161,7 +160,7 @@ impl UsbDevice {
             .as_deref()
             .ok_or("The device is already unbound.".to_owned())?;
 
-        let args = ["unbind", "--guid", guid].to_vec();
+        let args = vec!["unbind", "--guid", guid];
 
         usbipd(&args).or_else(|err| {
             if err.contains("administrator") {
@@ -184,13 +183,7 @@ impl UsbDevice {
             self.wait(|d| d.is_some_and(|d| d.is_bound()))?;
         }
 
-        let args = if version().major < 4 {
-            ["wsl", "attach", "--busid", bus_id].to_vec()
-        } else {
-            ["attach", "--wsl", "--busid", bus_id].to_vec()
-        };
-
-        usbipd(&args)
+        usbipd(&["attach", "--wsl", "--busid", bus_id])
     }
 
     /// Detaches the device.
@@ -200,17 +193,10 @@ impl UsbDevice {
             .as_deref()
             .ok_or("The device does not have a bus ID.".to_owned())?;
 
-        let args = if version().major < 4 {
-            ["wsl", "detach", "--busid", bus_id].to_vec()
-        } else {
-            ["detach", "--busid", bus_id].to_vec()
-        };
-
-        usbipd(&args)
+        usbipd(&["detach", "--busid", bus_id])
     }
 
-    /// Spawns a process running the auto-attach loop for the device and
-    /// returns its handle.
+    /// Spawns a process running the auto-attach loop for the device and returns its handle.
     ///
     /// The device **must** be bound before auto-attaching it.
     pub fn auto_attach(&self) -> Result<std::process::Child, String> {
@@ -219,14 +205,8 @@ impl UsbDevice {
             .as_deref()
             .ok_or("The device does not have a bus ID.".to_owned())?;
 
-        let args = if version().major < 4 {
-            ["wsl", "attach", "--auto-attach", "--busid", bus_id].to_vec()
-        } else {
-            ["attach", "--wsl", "--auto-attach", "--busid", bus_id].to_vec()
-        };
-
         Command::new(USBIPD_EXE)
-            .args(args)
+            .args(&["attach", "--wsl", "--auto-attach", "--busid", bus_id])
             .creation_flags(CREATE_NO_WINDOW)
             .spawn()
             .map_err(|err| err.to_string())
@@ -365,15 +345,16 @@ pub struct Version {
 }
 
 /// Static cached version of `usbipd`.
-static CACHED_VERSION: OnceLock<Version> = OnceLock::new();
+static CACHED_VERSION: OnceLock<Option<Version>> = OnceLock::new();
 
 /// Fetches the version of `usbipd` by spawning a process.
-fn fetch_version() -> Version {
+/// This will panic if `usbipd` is not installed, ensure it is before calling this function.
+fn fetch_version() -> Option<Version> {
     let cmd = Command::new(USBIPD_EXE)
         .arg("--version")
         .creation_flags(CREATE_NO_WINDOW)
         .output()
-        .unwrap();
+        .ok()?;
     let version_string = String::from_utf8(cmd.stdout).unwrap();
 
     let version_split: Vec<&str> = version_string.split('+').collect();
@@ -386,23 +367,15 @@ fn fetch_version() -> Version {
             .unwrap_or(0)
     };
 
-    Version {
+    Some(Version {
         major: parse(0),
         minor: parse(1),
         patch: parse(2),
-    }
+    })
 }
 
 /// Returns the cached version of `usbipd`, initializing it on first call.
-pub fn version() -> &'static Version {
+/// A None option value means `usbipd` is not installed (or was not found in PATH).
+pub fn version() -> &'static Option<Version> {
     CACHED_VERSION.get_or_init(fetch_version)
-}
-
-/// Checks if `usbipd` is installed in the system.
-pub fn check_installed() -> bool {
-    Command::new(USBIPD_EXE)
-        .arg("--version")
-        .creation_flags(CREATE_NO_WINDOW)
-        .status()
-        .is_ok()
 }

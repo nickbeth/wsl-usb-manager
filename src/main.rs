@@ -25,13 +25,19 @@ fn main() -> ExitCode {
         return ExitCode::FAILURE;
     }
 
-    if !usbipd::check_installed() {
-        gui::show_usbipd_not_found_error();
-        return ExitCode::FAILURE;
-    }
+    // Check installed and minimum supported version
+    match usbipd::version() {
+        None => {
+            gui::show_usbipd_not_found_error();
+            return ExitCode::FAILURE;
+        }
 
-    if usbipd::version().major < 4 {
-        gui::show_usbipd_untested_version_warning();
+        Some(version) => {
+            if !(version.major >= 4 && version.minor >= 2) {
+                gui::show_usbipd_unsupported_version_error();
+                return ExitCode::FAILURE;
+            }
+        }
     }
 
     let auto_attacher = Rc::new(RefCell::new(AutoAttacher::new()));
