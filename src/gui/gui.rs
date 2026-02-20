@@ -84,18 +84,13 @@ pub fn show_usbipd_not_found_error() {
     });
 }
 
-/// Shows a warning message telling the user that an untested version of USBIPD was found.
-///
-/// This function is called when the app finds a version of USBIPD lower than 4.
-pub fn show_usbipd_untested_version_warning() {
+/// Shows an error message telling the user that an unsupported version of USBIPD was found.
+pub fn show_usbipd_unsupported_version_error() {
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager: Untested USBIPD Version",
-        content: concat!(
-            "An untested version of USBIPD was found, this app may not work correctly. ",
-            "Please install USBIPD version 4 or newer."
-        ),
+        title: "WSL USB Manager: Unsupported USBIPD Version",
+        content: "An unsupported version of USBIPD was found, please install USBIPD version 4.2.0 or newer.",
         buttons: nwg::MessageButtons::Ok,
-        icons: nwg::MessageIcons::Warning,
+        icons: nwg::MessageIcons::Error,
     });
 }
 
