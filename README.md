@@ -56,6 +56,11 @@ Run the executable to start the application.
 If you encounter any issues, please open a [GitHub issue](https://github.com/lynxnb/wsl-usb-manager/issues).
 
 
+## Building from source
+
+Please refer to the [building instructions](BUILDING.md) for detailed instructions on how to build the project. Cross-compilation from Linux is supported.
+
+
 ## Screenshots
 
 <div align="left">
