@@ -4,6 +4,7 @@
 mod args;
 mod auto_attach;
 mod gui;
+mod settings;
 mod usbipd;
 mod win_utils;
 
@@ -18,6 +19,8 @@ fn main() -> ExitCode {
         Ok(args) => args,
         Err(code) => return code,
     };
+
+    let _settings_location = settings::ensure_settings_dir();
 
     // Ensure that only one instance of the application is running
     if !win_utils::acquire_single_instance_lock() {

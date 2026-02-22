@@ -2,7 +2,8 @@
 <!-- SPDX-License-Identifier: MIT -->
 
 <Wix xmlns="http://wixtoolset.org/schemas/v4/wxs"
-    xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui">
+    xmlns:ui="http://wixtoolset.org/schemas/v4/wxs/ui"
+    xmlns:util="http://wixtoolset.org/schemas/v4/wxs/util">
 
     <Package Name="$(env.PRODUCT_NAME)"
         Manufacturer="$(env.COMPANY_NAME)"
@@ -37,6 +38,7 @@
             AllowAbsent="no">
 
             <ComponentGroupRef Id="HarvestedComponents"/>
+            <ComponentRef Id="AppDataFolder" />
 
             <Feature Id="StartMenuFolderFeature"
                 Title="Start Menu Folder"
@@ -99,6 +101,33 @@
                         Type="integer"
                         Value="1"
                         KeyPath="yes" />
+                </Component>
+            </Directory>
+        </StandardDirectory>
+
+        <Property Id="APPDATAPRODUCTFOLDER">
+            <RegistrySearch Root="HKCU"
+                Key="Software\WSL USB Manager\WSL USB Manager"
+                Name="AppDataPath"
+                Type="raw" />
+        </Property>
+
+        <StandardDirectory Id="LocalAppDataFolder">
+            <Directory Id="AppDataProductFolder"
+                Name="WSL USB Manager">
+                <Component Id="AppDataFolder"
+                    Guid="24f9c311-7518-48d1-ade8-f1a98fd8f40e">
+                    <CreateFolder />
+                    <RemoveFolder Id="AppDataProductFolder"
+                        On="uninstall" />
+                    <RegistryValue Root="HKCU"
+                        Key="Software\WSL USB Manager\WSL USB Manager"
+                        Name="AppDataPath"
+                        Type="string"
+                        Value="[AppDataProductFolder]"
+                        KeyPath="yes" />
+                    <util:RemoveFolderEx On="uninstall"
+                        Property="APPDATAPRODUCTFOLDER" />
                 </Component>
             </Directory>
         </StandardDirectory>
