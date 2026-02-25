@@ -13,6 +13,11 @@ use args::Args;
 use auto_attach::AutoAttacher;
 
 fn main() -> ExitCode {
+    // Ensure that all child processes are terminated when the main application exits
+    if let Err(e) = win_utils::setup_job_object_grouping() {
+        eprintln!("Warning: Could not group processes: {}", e);
+    }
+
     // Parse arguments
     let args = match Args::parse() {
         Ok(args) => args,
