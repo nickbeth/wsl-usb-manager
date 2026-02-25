@@ -11,13 +11,11 @@ use nwg::stretch::{
 };
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE;
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
-use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
 use super::device_info::DeviceInfo;
 use crate::gui::{
-    connected_tab::auto_attach::AutoAttachWindowUi,
-    main_window::GuiTab,
-    nwg_ext::{BitmapEx, MenuItemEx},
+    RESOURCES, connected_tab::auto_attach::AutoAttachWindowUi, main_window::GuiTab,
+    nwg_ext::MenuItemEx,
 };
 use crate::usbipd::{self, UsbDevice, UsbipState};
 use crate::{auto_attach::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
@@ -38,7 +36,6 @@ pub struct ConnectedTab {
     auto_attach_window: Cell<Option<Box<AutoAttachWindowUi>>>,
 
     window: RefCell<Rc<nwg::Window>>,
-    shield_bitmap: Cell<nwg::Bitmap>,
 
     /// A notice sender to notify the auto attach tab to refresh
     pub auto_attach_notice: Cell<Option<nwg::NoticeSender>>,
@@ -140,9 +137,8 @@ impl ConnectedTab {
                 self.auto_attach_button.set_enabled(false);
 
                 // Attaching an unbound device requires admin privileges, show the UAC shield icon
-                let shield_bitmap = self.shield_bitmap.take();
-                self.attach_detach_button.set_bitmap(Some(&shield_bitmap));
-                self.shield_bitmap.set(shield_bitmap);
+                self.attach_detach_button
+                    .set_bitmap(Some(&RESOURCES.shield_bitmap));
             }
 
             if device.is_attached() {
@@ -193,9 +189,7 @@ impl ConnectedTab {
             self.menu_unbind.set_enabled(false);
 
             // Attaching an unbound device requires admin privileges, show the UAC shield icon
-            let shield_bitmap = self.shield_bitmap.take();
-            self.menu_attach.set_bitmap(Some(&shield_bitmap));
-            self.shield_bitmap.set(shield_bitmap);
+            self.menu_attach.set_bitmap(Some(&RESOURCES.shield_bitmap));
         }
 
         let (x, y) = nwg::GlobalCursor::position();
@@ -347,15 +341,13 @@ impl GuiTab for ConnectedTab {
     fn init(&self, window: &Rc<nwg::Window>) {
         *self.window.borrow_mut() = Rc::clone(window);
 
-        let shield_bitmap = nwg::Bitmap::from_system_icon(SIID_SHIELD);
-
         // Set the UAC shield icon for menu items and buttons that always require admin privileges
-        self.menu_bind.set_bitmap(Some(&shield_bitmap));
-        self.menu_bind_force.set_bitmap(Some(&shield_bitmap));
-        self.menu_unbind.set_bitmap(Some(&shield_bitmap));
-        self.bind_unbind_button.set_bitmap(Some(&shield_bitmap));
-
-        self.shield_bitmap.set(shield_bitmap);
+        self.menu_bind.set_bitmap(Some(&RESOURCES.shield_bitmap));
+        self.menu_bind_force
+            .set_bitmap(Some(&RESOURCES.shield_bitmap));
+        self.menu_unbind.set_bitmap(Some(&RESOURCES.shield_bitmap));
+        self.bind_unbind_button
+            .set_bitmap(Some(&RESOURCES.shield_bitmap));
 
         self.init_list();
         self.refresh();

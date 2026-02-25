@@ -4,13 +4,18 @@ use std::{
 };
 
 use native_windows_gui as nwg;
+use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
-use crate::{auto_attach::AutoAttacher, gui::tray::Tray};
+use crate::{
+    auto_attach::AutoAttacher,
+    gui::{nwg_ext::BitmapEx, tray::Tray},
+};
 
 #[derive(Default)]
 pub struct GuiResources {
     pub embed: nwg::EmbedResource,
     pub app_icon: nwg::Icon,
+    pub shield_bitmap: nwg::Bitmap,
 }
 
 // This is fine since these resources are only accessed from the same thread
@@ -29,6 +34,9 @@ pub const RESOURCES: LazyCell<GuiResources> = LazyCell::new(|| {
         .source_embed_str(Some("MAINICON"))
         .build(&mut resources.app_icon)
         .expect("Failed to load app icon from embedded resources");
+
+    // Load the UAC shield icon from the system icons
+    resources.shield_bitmap = nwg::Bitmap::from_system_icon(SIID_SHIELD);
 
     resources
 });

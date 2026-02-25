@@ -7,13 +7,11 @@ use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
 };
-use windows_sys::Win32::UI::{Controls::LVSCW_AUTOSIZE_USEHEADER, Shell::SIID_SHIELD};
+use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 
 use super::persisted_info::PersistedInfo;
-use crate::gui::{
-    main_window::GuiTab,
-    nwg_ext::{BitmapEx, MenuItemEx},
-};
+use crate::gui::RESOURCES;
+use crate::gui::{main_window::GuiTab, nwg_ext::MenuItemEx};
 use crate::usbipd::{self, UsbDevice};
 
 const PADDING_LEFT: Rect<D> = Rect {
@@ -29,7 +27,6 @@ const DETAILS_PANEL_PADDING: u32 = 4;
 #[derive(Default)]
 pub struct PersistedTab {
     window: Cell<nwg::ControlHandle>,
-    shield_bitmap: Cell<nwg::Bitmap>,
 
     persisted_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
@@ -173,11 +170,9 @@ impl GuiTab for PersistedTab {
     fn init(&self, window: &Rc<nwg::Window>) {
         self.window.set(window.handle);
 
-        let shield_bitmap = nwg::Bitmap::from_system_icon(SIID_SHIELD);
-        self.delete_button.set_bitmap(Some(&shield_bitmap));
-        self.menu_delete.set_bitmap(Some(&shield_bitmap));
-
-        self.shield_bitmap.set(shield_bitmap);
+        self.delete_button
+            .set_bitmap(Some(&RESOURCES.shield_bitmap));
+        self.menu_delete.set_bitmap(Some(&RESOURCES.shield_bitmap));
 
         self.init_list();
         self.refresh();
