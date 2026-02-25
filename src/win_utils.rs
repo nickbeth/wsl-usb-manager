@@ -1,6 +1,7 @@
 //! Various Windows utilities.
 
-use std::ptr::null_mut;
+use std::mem::{size_of, zeroed};
+use std::ptr::{null, null_mut};
 
 use windows_sys::Win32::{
     Devices::{
@@ -12,10 +13,16 @@ use windows_sys::Win32::{
         },
         Usb::GUID_DEVINTERFACE_USB_DEVICE,
     },
-    Foundation::{ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError},
+    Foundation::{CloseHandle, ERROR_ALREADY_EXISTS, ERROR_SUCCESS, GetLastError},
     System::{
         Diagnostics::Debug::{FORMAT_MESSAGE_FROM_SYSTEM, FormatMessageW},
+        JobObjects::{
+            AssignProcessToJobObject, CreateJobObjectW, JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE,
+            JOBOBJECT_EXTENDED_LIMIT_INFORMATION, JobObjectExtendedLimitInformation,
+            SetInformationJobObject,
+        },
         Threading::CreateMutexW,
+        Threading::GetCurrentProcess,
     },
 };
 
@@ -142,5 +149,52 @@ impl Drop for DeviceNotification {
         if !self.handle.is_null() {
             unsafe { CM_Unregister_Notification(self.handle) };
         }
+    }
+}
+
+pub fn setup_job_object_grouping() -> Result<(), String> {
+    unsafe {
+        // Create the Job Object
+        let job_handle = CreateJobObjectW(null(), null());
+        if job_handle.is_null() {
+            return Err(format!(
+                "Failed to create job object: {}",
+                get_last_error_string()
+            ));
+        }
+
+        // Configure the job to kill children when parent handle closes
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+
+        let res = SetInformationJobObject(
+            job_handle,
+            JobObjectExtendedLimitInformation,
+            &info as *const _ as _,
+            size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as u32,
+        );
+
+        if res == 0 {
+            CloseHandle(job_handle);
+            return Err(format!(
+                "Failed to set job information: {}",
+                get_last_error_string()
+            ));
+        }
+
+        // Assign the CURRENT process to this job
+        // All subsequent spawned children (like usbipd) will inherit this job
+        let process_handle = GetCurrentProcess();
+        if AssignProcessToJobObject(job_handle, process_handle) == 0 {
+            CloseHandle(job_handle);
+            return Err(format!(
+                "Failed to assign process to job: {}",
+                get_last_error_string()
+            ));
+        }
+
+        // We intentionally leak the job_handle or store it for the app's lifetime
+        // If we close it now, the JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE might trigger
+        Ok(())
     }
 }
