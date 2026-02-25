@@ -12,7 +12,7 @@ use super::connected_tab::ConnectedTab;
 use super::nwg_ext::WindowEx;
 use super::persisted_tab::PersistedTab;
 use crate::{
-    auto_attach::AutoAttacher,
+    auto_attacher::AutoAttacher,
     win_utils::{self, DeviceNotification},
 };
 use crate::{gui::RESOURCES, usbipd::list_devices};
@@ -194,7 +194,6 @@ impl NativeUi<MainWindowUi> for MainWindow {
                                 MainWindow::close(&ui);
                             }
                         }
-
                         nwg::Event::OnInit => {
                             if handle == ui.window.handle {
                                 MainWindow::init(&ui);

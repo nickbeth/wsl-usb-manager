@@ -4,14 +4,14 @@ use std::{
     rc::Rc,
 };
 
-use native_windows_gui::{self as nwg, NativeUi, RadioButtonState};
+use native_windows_gui::{self as nwg, RadioButtonState};
 use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, Dimension::Points as Pt, FlexDirection},
 };
 
 use crate::{
-    auto_attach::AutoAttacher,
+    auto_attacher::AutoAttacher,
     gui::{RESOURCES, helpers},
     usbipd::UsbDevice,
 };
@@ -21,7 +21,6 @@ enum AutoAttachMode {
     #[default]
     Device,
     Port,
-    Both,
 }
 
 #[derive(Default)]
@@ -30,14 +29,12 @@ pub struct AutoAttachWindow {
     attach_mode: Cell<Option<AutoAttachMode>>,
     auto_attacher: Rc<RefCell<AutoAttacher>>,
 
-    parent_window: Rc<nwg::Window>,
-    window: nwg::Window,
+    pub window: nwg::Window,
     main_layout: nwg::FlexboxLayout,
 
     label: nwg::Label,
     device_button: nwg::RadioButton,
     port_button: nwg::RadioButton,
-    both_button: nwg::RadioButton,
 
     // Buttons
     buttons_frame: nwg::Frame,
@@ -47,15 +44,10 @@ pub struct AutoAttachWindow {
 }
 
 impl AutoAttachWindow {
-    pub fn new(
-        window: &Rc<nwg::Window>,
-        device: UsbDevice,
-        auto_attacher: &Rc<RefCell<AutoAttacher>>,
-    ) -> Self {
+    pub fn new(device: UsbDevice, auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
         Self {
             device,
             auto_attacher: auto_attacher.clone(),
-            parent_window: window.clone(),
             ..Default::default()
         }
     }
@@ -67,11 +59,6 @@ impl AutoAttachWindow {
 
     fn select_port(&self) {
         self.attach_mode.set(Some(AutoAttachMode::Port));
-        self.update_checked();
-    }
-
-    fn select_both(&self) {
-        self.attach_mode.set(Some(AutoAttachMode::Both));
         self.update_checked();
     }
 
@@ -93,12 +80,46 @@ impl AutoAttachWindow {
             .set_check_state(radio_state!(mode == Some(AutoAttachMode::Device)));
         self.port_button
             .set_check_state(radio_state!(mode == Some(AutoAttachMode::Port)));
-        self.both_button
-            .set_check_state(radio_state!(mode == Some(AutoAttachMode::Both)));
+
+        if !self.device.is_bound() || mode == Some(AutoAttachMode::Port) {
+            self.ok_button.set_bitmap(Some(&RESOURCES.shield_bitmap));
+        } else {
+            self.ok_button.set_bitmap(None);
+        }
     }
 
     fn auto_attach(&self) {
-        match self.auto_attacher.borrow_mut().add_device(&self.device) {
+        let Some(attach_mode) = self.attach_mode.get() else {
+            return;
+        };
+
+        // Show wait cursor while the command is running
+        let window = self.window.handle;
+        let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
+        let cursor_event =
+            nwg::full_bind_event_handler(&window, move |event, _event_data, _handle| match event {
+                nwg::Event::OnMousePress(_) | nwg::Event::OnMouseMove => {
+                    nwg::GlobalCursor::set(&wait_cursor)
+                }
+                _ => {}
+            });
+
+        let attach_result = (|| {
+            match attach_mode {
+                AutoAttachMode::Device => {
+                    // If the device isn't bound, bind it before adding the profile
+                    if !self.device.is_bound() {
+                        self.device.bind(false)?;
+                        self.device.wait(|d| d.is_some_and(|d| !d.is_bound()))?;
+                    }
+                    self.auto_attacher.borrow_mut().add_device(&self.device)
+                }
+                AutoAttachMode::Port => self.auto_attacher.borrow_mut().add_port(&self.device),
+            }
+        })();
+
+        nwg::unbind_event_handler(&cursor_event);
+        match attach_result {
             Ok(()) => {
                 self.close();
             }
@@ -115,19 +136,18 @@ impl AutoAttachWindow {
     fn close(&self) {
         self.window.close();
     }
-
-    fn enable_parent(&self, enable: bool) {
-        self.parent_window.set_enabled(enable);
-    }
 }
 
 pub struct AutoAttachWindowUi {
-    inner: Rc<AutoAttachWindow>,
-    default_handler: nwg::EventHandler,
+    pub inner: Rc<AutoAttachWindow>,
+    pub default_handlers: Vec<nwg::EventHandler>,
 }
 
-impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
-    fn build_ui(mut data: Self) -> Result<AutoAttachWindowUi, nwg::NwgError> {
+impl AutoAttachWindow {
+    pub fn build_ui(
+        mut data: Self,
+        parent_window: &nwg::Window,
+    ) -> Result<AutoAttachWindowUi, nwg::NwgError> {
         let description = data
             .device
             .description
@@ -140,9 +160,9 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
         let description = helpers::ellipsize_middle(description, MAX_LENGTH);
 
         // Compute centered position relative to parent window (DPI-aware)
-        let child_size = (420, 200);
-        let (px, py) = data.parent_window.position();
-        let (pw, ph) = data.parent_window.size();
+        let child_size = (385, 176);
+        let (px, py) = parent_window.position();
+        let (pw, ph) = parent_window.size();
         let position = (
             px + (pw as i32 - child_size.0) / 2,
             py + (ph as i32 - child_size.1) / 2,
@@ -151,7 +171,7 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
         // Window
         nwg::Window::builder()
             .flags(nwg::WindowFlags::WINDOW | nwg::WindowFlags::VISIBLE | nwg::WindowFlags::POPUP)
-            .parent(Some(data.parent_window.handle))
+            .parent(Some(parent_window.handle))
             .size(child_size)
             .position(position)
             .title("Configure Auto Attach")
@@ -176,12 +196,6 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
             .parent(&data.window)
             .text(&format!("Port: {}", bus_id))
             .build(&mut data.port_button)?;
-
-        nwg::RadioButton::builder()
-            .flags(nwg::RadioButtonFlags::VISIBLE)
-            .parent(&data.window)
-            .text(&format!("Both: {} on {}", description, bus_id))
-            .build(&mut data.both_button)?;
 
         nwg::Frame::builder()
             .flags(nwg::FrameFlags::VISIBLE)
@@ -230,11 +244,6 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
                 width: D::Auto,
                 height: Pt(25.0),
             })
-            .child(&data.both_button)
-            .child_size(Size {
-                width: D::Auto,
-                height: Pt(25.0),
-            })
             .child(&data.buttons_frame)
             .child_size(Size {
                 width: D::Auto,
@@ -270,9 +279,6 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
             })
             .build(&data.buttons_layout)?;
 
-        // Disable the parent window to make this a modal dialog
-        data.enable_parent(false);
-
         // Wrap in Rc and bind events
         let inner = Rc::new(data);
         let evt_ui = Rc::downgrade(&inner);
@@ -280,34 +286,24 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
         let window_handle = inner.window.handle;
         let default_handler =
             nwg::full_bind_event_handler(&window_handle, move |evt, _evt_data, handle| {
-                if let Some(ui) = evt_ui.upgrade() {
-                    match evt {
-                        nwg::Event::OnWindowClose => {
-                            if handle == ui.window.handle {
-                                AutoAttachWindow::enable_parent(&ui, true);
-                            }
-                        }
-                        nwg::Event::OnButtonClick => {
-                            if handle == ui.device_button.handle {
-                                AutoAttachWindow::select_device(&ui);
-                            } else if handle == ui.port_button.handle {
-                                AutoAttachWindow::select_port(&ui);
-                            } else if handle == ui.both_button.handle {
-                                AutoAttachWindow::select_both(&ui);
-                            } else if handle == ui.cancel_button.handle {
-                                AutoAttachWindow::close(&ui);
-                            } else if handle == ui.ok_button.handle {
-                                AutoAttachWindow::auto_attach(&ui);
-                            }
-                        }
-                        _ => {}
+                if let Some(ui) = evt_ui.upgrade()
+                    && evt == nwg::Event::OnButtonClick
+                {
+                    if handle == ui.device_button.handle {
+                        AutoAttachWindow::select_device(&ui);
+                    } else if handle == ui.port_button.handle {
+                        AutoAttachWindow::select_port(&ui);
+                    } else if handle == ui.cancel_button.handle {
+                        AutoAttachWindow::close(&ui);
+                    } else if handle == ui.ok_button.handle {
+                        AutoAttachWindow::auto_attach(&ui);
                     }
                 }
             });
 
         let ui = AutoAttachWindowUi {
             inner,
-            default_handler,
+            default_handlers: vec![default_handler],
         };
 
         Ok(ui)
@@ -316,7 +312,9 @@ impl NativeUi<AutoAttachWindowUi> for AutoAttachWindow {
 
 impl Drop for AutoAttachWindowUi {
     fn drop(&mut self) {
-        nwg::unbind_event_handler(&self.default_handler);
+        for handler in self.default_handlers.iter() {
+            nwg::unbind_event_handler(handler);
+        }
     }
 }
 

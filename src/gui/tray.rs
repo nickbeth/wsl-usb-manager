@@ -9,7 +9,7 @@ use native_windows_gui::{self as nwg, NwgError};
 use nwg::NativeUi;
 
 use crate::{
-    auto_attach::AutoAttacher,
+    auto_attacher::AutoAttacher,
     gui::{
         RESOURCES, helpers,
         main_window::{MainWindow, MainWindowUi},

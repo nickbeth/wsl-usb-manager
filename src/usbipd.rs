@@ -3,7 +3,7 @@
 
 use std::fmt::Display;
 use std::os::windows::process::CommandExt;
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 
@@ -91,11 +91,11 @@ impl UsbDevice {
 
     /// Returns the VID:PID of the device if available.
     pub fn vid_pid(&self) -> Option<String> {
-        // USB\VID_XXXX&PID_XXXX\XXXX
+        // USB\VID_vvvv&PID_pppp\xxxx
         let instance_id = self.instance_id.as_deref()?;
-        // VID_XXXX&PID_XXXX
+        // VID_vvvv&PID_pppp
         let vid_pid = instance_id.split('\\').nth(1)?;
-        // VVVV:PPPP
+        // vvvv:pppp
         let vid_pid = vid_pid.replace("VID_", "").replace("&PID_", ":");
 
         Some(vid_pid)
@@ -103,9 +103,9 @@ impl UsbDevice {
 
     /// Returns the serial number of the device if available.
     pub fn serial(&self) -> Option<String> {
-        // USB\VID_XXXX&PID_XXXX\XXXX
+        // USB\VID_vvvv&PID_pppp\xxxx
         let instance_id = self.instance_id.as_deref()?;
-        // XXXX
+        // xxxx
         let serial = instance_id.split('\\').nth(2)?;
 
         // Windows generates instance IDs for devices that do not provide a serial number.
@@ -136,7 +136,7 @@ impl UsbDevice {
         let bus_id = self
             .bus_id
             .as_deref()
-            .ok_or("The device does not have a bus ID.".to_owned())?;
+            .ok_or("The device does not have a bus ID.")?;
 
         let args = if force {
             vec!["bind", "--force", "--busid", bus_id]
@@ -158,7 +158,7 @@ impl UsbDevice {
         let guid = self
             .persisted_guid
             .as_deref()
-            .ok_or("The device is already unbound.".to_owned())?;
+            .ok_or("The device is already unbound.")?;
 
         let args = vec!["unbind", "--guid", guid];
 
@@ -176,7 +176,7 @@ impl UsbDevice {
         let bus_id = self
             .bus_id
             .as_deref()
-            .ok_or("The device does not have a bus ID.".to_owned())?;
+            .ok_or("The device does not have a bus ID.")?;
 
         if !self.is_bound() {
             self.bind(false)?;
@@ -191,25 +191,9 @@ impl UsbDevice {
         let bus_id = self
             .bus_id
             .as_deref()
-            .ok_or("The device does not have a bus ID.".to_owned())?;
+            .ok_or("The device does not have a bus ID.")?;
 
         usbipd(&["detach", "--busid", bus_id])
-    }
-
-    /// Spawns a process running the auto-attach loop for the device and returns its handle.
-    ///
-    /// The device **must** be bound before auto-attaching it.
-    pub fn auto_attach(&self) -> Result<std::process::Child, String> {
-        let bus_id = self
-            .bus_id
-            .as_deref()
-            .ok_or("The device does not have a bus ID.".to_owned())?;
-
-        Command::new(USBIPD_EXE)
-            .args(&["attach", "--wsl", "--auto-attach", "--busid", bus_id])
-            .creation_flags(CREATE_NO_WINDOW)
-            .spawn()
-            .map_err(|err| err.to_string())
     }
 
     /// Waits until `wait_cond` is satisfied for the device.
@@ -264,6 +248,79 @@ pub fn list_devices() -> Vec<UsbDevice> {
 
     let state_res: StateResult = serde_json::from_str(&state_str).unwrap();
     state_res.devices
+}
+
+/// Spawns a process running the auto-attach loop for the given hardware ID and returns its handle.
+///
+/// The device **must** be bound before auto-attaching it, otherwise the process will fail and exit.
+pub fn auto_attach_device(hw_id: &str) -> Result<std::process::Child, String> {
+    Command::new(USBIPD_EXE)
+        .args(["attach", "--wsl", "--auto-attach", "--hardware-id", hw_id])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| err.to_string())
+}
+
+/// Spawns a process running the auto-attach loop for the given bus ID and returns its handle.
+///
+/// The device **must** be bound before auto-attaching it, otherwise the process will fail and exit.
+pub fn auto_attach_port(bus_id: &str) -> Result<std::process::Child, String> {
+    Command::new(USBIPD_EXE)
+        .args(["attach", "--wsl", "--auto-attach", "--busid", bus_id])
+        .creation_flags(CREATE_NO_WINDOW)
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|err| err.to_string())
+}
+
+/// Retrieves the list of auto-attach policies from `usbipd`.
+pub fn policy_list() -> Vec<String> {
+    let policy_str = {
+        let cmd = Command::new(USBIPD_EXE)
+            .args(["policy", "list"])
+            .creation_flags(CREATE_NO_WINDOW)
+            .output()
+            .unwrap();
+
+        String::from_utf8(cmd.stdout).unwrap()
+    };
+
+    policy_str
+        .lines()
+        .map(|line| line.trim().to_owned())
+        .collect()
+}
+
+/// Adds an AutoBind policy for the given bus ID.
+pub fn policy_add(bus_id: &str) -> Result<(), String> {
+    usbipd_admin(&[
+        "policy",
+        "add",
+        "--operation",
+        "AutoBind",
+        "--effect",
+        "Allow",
+        "--busid",
+        bus_id,
+    ])
+}
+
+/// Removes the AutoBind policy for the given bus ID.
+pub fn policy_remove(bus_id: &str) -> Result<(), String> {
+    let guid = policy_list()
+        .iter()
+        .find(|line| line.contains(bus_id))
+        .and_then(|line| {
+            line.split_whitespace()
+                .next()
+                .unwrap_or_default()
+                .to_owned()
+                .into()
+        })
+        .ok_or("No policy found for the device.".to_string())?;
+
+    usbipd_admin(&["policy", "remove", "--guid", &guid])
 }
 
 /// Executes `usbipd` with the given arguments.

@@ -1,4 +1,5 @@
 use std::{
+    borrow::Cow,
     cell::{Cell, RefCell},
     rc::Rc,
 };
@@ -9,11 +10,14 @@ use nwg::stretch::{
     geometry::{Rect, Size},
     style::{Dimension as D, FlexDirection},
 };
-use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
+use windows_sys::Win32::UI::Controls::{LVSCW_AUTOSIZE, LVSCW_AUTOSIZE_USEHEADER};
 
 use super::auto_attach_info::AutoAttachInfo;
-use crate::auto_attach::{self, AutoAttachProfile, AutoAttacher};
 use crate::gui::main_window::GuiTab;
+use crate::{
+    auto_attacher::{AutoAttacher, Profile, ProfileInfo},
+    gui::RESOURCES,
+};
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),
@@ -31,7 +35,7 @@ pub struct AutoAttachTab {
 
     window: Cell<nwg::ControlHandle>,
 
-    auto_attach_profiles: RefCell<Vec<auto_attach::AutoAttachProfile>>,
+    auto_attach_profiles: RefCell<Vec<ProfileInfo>>,
 
     pub refresh_notice: nwg::Notice,
 
@@ -49,10 +53,12 @@ pub struct AutoAttachTab {
     buttons_frame: nwg::Frame,
     buttons_layout: nwg::FlexboxLayout,
     button_delete: nwg::Button,
+    button_restart: nwg::Button,
 
     // Device context menu
     menu: nwg::Menu,
     menu_delete: nwg::MenuItem,
+    menu_restart: nwg::MenuItem,
 }
 
 impl AutoAttachTab {
@@ -66,10 +72,18 @@ impl AutoAttachTab {
     fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
-        dv.insert_column("Device");
+        dv.insert_column("Status");
+        dv.insert_column("Description");
         dv.set_headers_enabled(true);
 
-        dv.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
+        // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
+        dv.insert_items_row(None, &["Inactive", "Device"]);
+
+        dv.set_column_width(0, LVSCW_AUTOSIZE as isize);
+        dv.set_column_width(1, LVSCW_AUTOSIZE_USEHEADER as isize);
+
+        // Clear the dummy row
+        dv.clear();
     }
 
     /// Clears the auto attach profile list and reloads it.
@@ -77,23 +91,37 @@ impl AutoAttachTab {
         self.update_profiles();
 
         self.list_view.clear();
-        for profile in self.auto_attach_profiles.borrow().iter() {
-            self.list_view.insert_items_row(
-                None,
-                &[profile.description.as_deref().unwrap_or("Unknown device")],
-            );
+        for info in self.auto_attach_profiles.borrow().iter() {
+            let description = match &info.profile {
+                Profile::Device { description, .. } => {
+                    Cow::Borrowed(description.as_deref().unwrap_or("Unknown device"))
+                }
+                Profile::Port { bus_id } => Cow::Owned(format!("Any device on port {}", bus_id)),
+            };
+            let status = if info.active { "Active" } else { "Inactive" };
+
+            self.list_view
+                .insert_items_row(None, &[status, description.as_ref()]);
         }
     }
 
     /// Updates the auto attach details panel info.
     fn update_auto_attach_details(&self) {
         let profiles = self.auto_attach_profiles.borrow();
-        let profile = self.list_view.selected_item().and_then(|i| profiles.get(i));
+        let info = self.list_view.selected_item().and_then(|i| profiles.get(i));
 
-        self.auto_attach_info.update(profile);
+        self.auto_attach_info.update(info);
 
         // Update buttons
-        self.button_delete.set_enabled(profile.is_some());
+        self.button_delete.set_enabled(info.is_some());
+        let bitmap = if info.is_some_and(|p| matches!(p.profile, Profile::Port { .. })) {
+            Some(&RESOURCES.shield_bitmap)
+        } else {
+            None
+        };
+        self.button_delete.set_bitmap(bitmap);
+        self.button_restart
+            .set_enabled(info.is_some_and(|p| !p.active));
     }
 
     fn show_menu(&self) {
@@ -108,7 +136,15 @@ impl AutoAttachTab {
     }
 
     fn delete(&self) {
-        self.run_command(|profile| self.auto_attacher.borrow_mut().remove(profile));
+        self.run_command(|info| self.auto_attacher.borrow_mut().remove(&info.profile));
+    }
+
+    fn restart(&self) {
+        self.run_command(|info| {
+            self.auto_attacher
+                .borrow_mut()
+                .activate_profile(info.profile.clone())
+        });
     }
 
     /// Runs a `command` function on the currently selected profile.
@@ -117,7 +153,7 @@ impl AutoAttachTab {
     /// If the command completes successfully, the view is reloaded.
     ///
     /// If an error occurs, an error dialog is shown.
-    fn run_command(&self, command: impl Fn(&AutoAttachProfile) -> Result<(), String>) {
+    fn run_command(&self, command: impl Fn(&ProfileInfo) -> Result<(), String>) {
         let window = self.window.get();
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
@@ -153,7 +189,7 @@ impl AutoAttachTab {
     }
 
     fn update_profiles(&self) {
-        *self.auto_attach_profiles.borrow_mut() = self.auto_attacher.borrow().profiles();
+        *self.auto_attach_profiles.borrow_mut() = self.auto_attacher.borrow_mut().profiles();
     }
 
     /// Inhibits the window close event.
@@ -221,6 +257,11 @@ impl PartialUi for AutoAttachTab {
             .text("Delete")
             .build(&mut data.button_delete)?;
 
+        nwg::Button::builder()
+            .parent(&data.buttons_frame)
+            .text("Restart")
+            .build(&mut data.button_restart)?;
+
         nwg::Menu::builder()
             .text("Device")
             .popup(true)
@@ -231,6 +272,11 @@ impl PartialUi for AutoAttachTab {
             .parent(&data.menu)
             .text("Delete")
             .build(&mut data.menu_delete)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Restart")
+            .build(&mut data.menu_restart)?;
 
         // Build nested partial
         AutoAttachInfo::build_partial(&mut data.auto_attach_info, Some(&data.details_info_frame))?;
@@ -272,6 +318,8 @@ impl PartialUi for AutoAttachTab {
             .auto_spacing(None)
             .child(&data.button_delete)
             .child_flex_grow(0.33)
+            .child(&data.button_restart)
+            .child_flex_grow(0.33)
             .build(&data.buttons_layout)?;
 
         Ok(())
@@ -308,10 +356,16 @@ impl PartialUi for AutoAttachTab {
                 if handle == self.button_delete.handle {
                     AutoAttachTab::delete(self);
                 }
+                if handle == self.button_restart.handle {
+                    AutoAttachTab::restart(self);
+                }
             }
             nwg::Event::OnMenuItemSelected => {
                 if handle == self.menu_delete.handle {
                     AutoAttachTab::delete(self);
+                }
+                if handle == self.menu_restart.handle {
+                    AutoAttachTab::restart(self);
                 }
             }
             _ => {}
