@@ -5,7 +5,7 @@ use nwg::stretch::{
     style::{Dimension as D, Dimension::Points as Pt, FlexDirection},
 };
 
-use crate::auto_attach::AutoAttachProfile;
+use crate::auto_attacher::{Profile, ProfileInfo};
 
 /// The auto attach profile info tab.
 /// It displays detailed information about an auto attach profile.
@@ -27,26 +27,46 @@ pub struct AutoAttachInfo {
 
     auto_attach_info: nwg::Label,
     separator: nwg::Frame,
-    persisted_id: nwg::Label,
-    persisted_id_content: nwg::RichLabel,
+    bus_id: nwg::Label,
+    bus_id_content: nwg::RichLabel,
     description: nwg::Label,
     description_content: nwg::RichLabel,
+    status: nwg::Label,
+    status_content: nwg::RichLabel,
+    last_error: nwg::Label,
+    last_error_content: nwg::RichLabel,
 }
 
 impl AutoAttachInfo {
-    pub fn update(&self, profile: Option<&AutoAttachProfile>) {
-        if let Some(profile) = profile {
-            self.persisted_id_content.set_text(&profile.id);
-            self.description_content.set_text(
-                profile
-                    .description
-                    .as_deref()
-                    .unwrap_or("No description available"),
-            );
-        } else {
-            self.persisted_id_content.set_text("-");
+    pub fn update(&self, info: Option<&ProfileInfo>) {
+        if info.is_none() {
+            self.bus_id_content.set_text("-");
             self.description_content.set_text("No profile selected");
+            self.last_error_content.set_text("");
+            return;
         }
+
+        let info = info.unwrap();
+
+        match &info.profile {
+            Profile::Device { hw_id, description } => {
+                self.bus_id.set_text("Hardware ID:");
+                self.bus_id_content.set_text(hw_id);
+                self.description_content
+                    .set_text(description.as_deref().unwrap_or("No description available"));
+            }
+            Profile::Port { bus_id } => {
+                self.bus_id.set_text("Bus ID:");
+                self.bus_id_content.set_text(bus_id);
+                self.description_content
+                    .set_text("Any device connected to this port");
+            }
+        }
+
+        self.status_content
+            .set_text(if info.active { "Active" } else { "Inactive" });
+        self.last_error_content
+            .set_text(info.last_error.as_deref().unwrap_or("No error"));
     }
 }
 
@@ -83,15 +103,15 @@ impl PartialUi for AutoAttachInfo {
             .build(&mut data.separator)?;
 
         nwg::Label::builder()
-            .text("Persisted ID:")
+            .text("Bus ID:")
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
-            .build(&mut data.persisted_id)?;
+            .build(&mut data.bus_id)?;
 
         nwg::RichLabel::builder()
             .parent(parent_ref.unwrap())
-            .build(&mut data.persisted_id_content)?;
+            .build(&mut data.bus_id_content)?;
 
         nwg::Label::builder()
             .text("Description:")
@@ -104,6 +124,29 @@ impl PartialUi for AutoAttachInfo {
             .flags(nwg::RichLabelFlags::VISIBLE | nwg::RichLabelFlags::MULTI_LINE)
             .parent(parent_ref.unwrap())
             .build(&mut data.description_content)?;
+
+        nwg::Label::builder()
+            .text("Auto Attach Status:")
+            .font(Some(&data.font_bold))
+            .v_align(nwg::VTextAlign::Bottom)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.status)?;
+
+        nwg::RichLabel::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.status_content)?;
+
+        nwg::Label::builder()
+            .text("Last Error:")
+            .font(Some(&data.font_bold))
+            .v_align(nwg::VTextAlign::Bottom)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.last_error)?;
+
+        nwg::RichLabel::builder()
+            .flags(nwg::RichLabelFlags::VISIBLE | nwg::RichLabelFlags::MULTI_LINE)
+            .parent(parent_ref.unwrap())
+            .build(&mut data.last_error_content)?;
 
         // Layout
         nwg::FlexboxLayout::builder()
@@ -128,8 +171,8 @@ impl PartialUi for AutoAttachInfo {
                 top: Pt(5.0),
                 bottom: Pt(0.0),
             })
-            // Persisted ID label
-            .child(&data.persisted_id)
+            // Bus ID label
+            .child(&data.bus_id)
             .child_size(Size {
                 width: D::Auto,
                 height: Pt(20.0),
@@ -140,8 +183,8 @@ impl PartialUi for AutoAttachInfo {
                 top: Pt(6.0),
                 bottom: Pt(0.0),
             })
-            // Persisted ID content
-            .child(&data.persisted_id_content)
+            // Bus ID content
+            .child(&data.bus_id_content)
             .child_size(Size {
                 width: D::Auto,
                 height: Pt(20.0),
@@ -152,11 +195,43 @@ impl PartialUi for AutoAttachInfo {
                 width: D::Auto,
                 height: Pt(20.0),
             })
-            // Description content (multi-line, flex_grow)
+            // Description content (multi-line, min-height)
             .child(&data.description_content)
             .child_size(Size {
                 width: D::Auto,
                 height: D::Auto,
+            })
+            .child_min_size(Size {
+                width: D::Auto,
+                height: Pt(20.0),
+            })
+            // Status label
+            .child(&data.status)
+            .child_size(Size {
+                width: D::Auto,
+                height: Pt(20.0),
+            })
+            // Status content
+            .child(&data.status_content)
+            .child_size(Size {
+                width: D::Auto,
+                height: Pt(20.0),
+            })
+            // Last error label
+            .child(&data.last_error)
+            .child_size(Size {
+                width: D::Auto,
+                height: Pt(20.0),
+            })
+            // Last error content (multi-line, min-height)
+            .child(&data.last_error_content)
+            .child_size(Size {
+                width: D::Auto,
+                height: D::Auto,
+            })
+            .child_min_size(Size {
+                width: D::Auto,
+                height: Pt(20.0),
             })
             .child_flex_grow(1.0)
             .build(&data.info_layout)?;

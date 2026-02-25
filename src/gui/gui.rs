@@ -7,7 +7,7 @@ use native_windows_gui as nwg;
 use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 
 use crate::{
-    auto_attach::AutoAttacher,
+    auto_attacher::AutoAttacher,
     gui::{nwg_ext::BitmapEx, tray::Tray},
 };
 

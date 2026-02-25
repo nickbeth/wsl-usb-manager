@@ -2,7 +2,7 @@
 #![cfg(target_os = "windows")]
 
 mod args;
-mod auto_attach;
+mod auto_attacher;
 mod gui;
 mod usbipd;
 mod win_utils;
@@ -10,7 +10,7 @@ mod win_utils;
 use std::{cell::RefCell, process::ExitCode, rc::Rc};
 
 use args::Args;
-use auto_attach::AutoAttacher;
+use auto_attacher::AutoAttacher;
 
 fn main() -> ExitCode {
     // Ensure that all child processes are terminated when the main application exits

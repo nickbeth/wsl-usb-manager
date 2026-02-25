@@ -3,7 +3,7 @@ use std::{
     rc::Rc,
 };
 
-use native_windows_gui::{self as nwg, NativeUi};
+use native_windows_gui as nwg;
 use nwg::PartialUi;
 use nwg::stretch::{
     geometry::{Rect, Size},
@@ -18,7 +18,7 @@ use crate::gui::{
     nwg_ext::MenuItemEx,
 };
 use crate::usbipd::{self, UsbDevice, UsbipState};
-use crate::{auto_attach::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
+use crate::{auto_attacher::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
 
 const PADDING_LEFT: Rect<D> = Rect {
     start: D::Points(8.0),
@@ -134,7 +134,6 @@ impl ConnectedTab {
                 self.attach_detach_button.set_bitmap(None);
             } else {
                 self.bind_unbind_button.set_text("Bind");
-                self.auto_attach_button.set_enabled(false);
 
                 // Attaching an unbound device requires admin privileges, show the UAC shield icon
                 self.attach_detach_button
@@ -147,6 +146,7 @@ impl ConnectedTab {
                 self.attach_detach_button.set_text("Attach");
             }
 
+            self.auto_attach_button.set_enabled(true);
             self.bind_unbind_button.set_enabled(true);
             self.attach_detach_button.set_enabled(true);
         } else {
@@ -168,29 +168,24 @@ impl ConnectedTab {
         let devices = self.connected_devices.borrow();
         let device = devices.get(selected_index).unwrap();
 
-        if device.is_attached() {
-            self.menu_detach.set_enabled(true);
-            self.menu_attach.set_enabled(false);
-        } else {
-            self.menu_detach.set_enabled(false);
-            self.menu_attach.set_enabled(true);
-        }
+        let is_attached = device.is_attached();
+        self.menu_attach.set_enabled(!is_attached);
+        self.menu_detach.set_enabled(is_attached);
 
-        if device.is_bound() {
-            self.menu_bind.set_enabled(false);
-            self.menu_bind_force.set_enabled(false);
-            self.menu_unbind.set_enabled(true);
+        let is_bound = device.is_bound();
+        self.menu_bind.set_enabled(!is_bound);
+        self.menu_bind_force.set_enabled(!is_bound);
+        self.menu_unbind.set_enabled(is_bound);
 
-            // Attaching a bound device doesn't require admin privileges, hide the UAC shield icon
-            self.menu_attach.set_bitmap(None);
-        } else {
-            self.menu_bind.set_enabled(true);
-            self.menu_bind_force.set_enabled(true);
-            self.menu_unbind.set_enabled(false);
-
+        // Show the UAC shield icon on menu items that require admin privileges
+        let bitmap = if !is_bound {
             // Attaching an unbound device requires admin privileges, show the UAC shield icon
-            self.menu_attach.set_bitmap(Some(&RESOURCES.shield_bitmap));
-        }
+            Some(&RESOURCES.shield_bitmap)
+        } else {
+            // Attaching a bound device doesn't require admin privileges, hide the UAC shield icon
+            None
+        };
+        self.menu_attach.set_bitmap(bitmap);
 
         let (x, y) = nwg::GlobalCursor::position();
         // Disable menu animations because they cause incorrect rendering of the bitmaps
@@ -268,13 +263,40 @@ impl ConnectedTab {
             None => return,
         };
 
-        let Ok(ui) = AutoAttachWindow::build_ui(AutoAttachWindow::new(
+        let Ok(mut ui) = AutoAttachWindow::build_ui(
+            AutoAttachWindow::new(device.clone(), &self.auto_attacher),
             &self.window.borrow(),
-            device.clone(),
-            &self.auto_attacher,
-        )) else {
+        ) else {
             return;
         };
+
+        // Prepare closure access to parent data
+        let parent_window = Rc::downgrade(&self.window.borrow());
+        let child_ui = Rc::downgrade(&ui.inner);
+        let notice = self.auto_attach_notice.get();
+
+        let parent_handler =
+            nwg::full_bind_event_handler(&ui.window.handle, move |evt, _evt_data, handle| {
+                let Some(ui) = child_ui.upgrade() else {
+                    return;
+                };
+
+                let Some(parent_window) = parent_window.upgrade() else {
+                    return;
+                };
+
+                if evt == nwg::Event::OnWindowClose && handle == ui.window.handle {
+                    parent_window.set_enabled(true);
+                    if let Some(n) = notice {
+                        n.notice();
+                    }
+                }
+            });
+
+        ui.default_handlers.push(parent_handler);
+
+        // Disable the parent window
+        self.window.borrow().set_enabled(false);
 
         // Store the auto attach window UI so that it doesn't get dropped immediately
         // Drops any old auto attach window in the process, if present
