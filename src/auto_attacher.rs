@@ -67,7 +67,8 @@ impl ProfileData {
                 let mut buf = vec![0u8; bytes_available as usize];
                 let _ = stderr.read(&mut buf);
 
-                let error_str = String::from_utf8_lossy(&buf).to_string();
+                let error_str =
+                    usbipd::get_error_message(String::from_utf8_lossy(&buf).to_string());
 
                 self.last_error = Some(error_str);
             }

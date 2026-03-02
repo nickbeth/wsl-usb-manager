@@ -337,7 +337,9 @@ where
             if output.status.success() {
                 Ok(())
             } else {
-                Err(String::from_utf8(output.stderr).unwrap())
+                Err(get_error_message(
+                    String::from_utf8_lossy(&output.stderr).to_string(),
+                ))
             }
         }
         Err(err) => Err(err.to_string()),
@@ -435,4 +437,15 @@ fn fetch_version() -> Option<Version> {
 /// A None option value means `usbipd` is not installed (or was not found in PATH).
 pub fn version() -> &'static Option<Version> {
     CACHED_VERSION.get_or_init(fetch_version)
+}
+
+/// Extracts the error message from the stderr output of a `usbipd` process.
+/// `usbipd` error messages are prefixed with "usbipd: error: ".
+pub fn get_error_message(stderr: String) -> String {
+    stderr
+        .lines()
+        .filter(|line| line.starts_with("usbipd: error: "))
+        .map(|line| line.strip_prefix("usbipd: error: ").unwrap().to_string())
+        .collect::<Vec<_>>()
+        .join("\n")
 }
