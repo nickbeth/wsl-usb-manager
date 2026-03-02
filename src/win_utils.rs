@@ -1,8 +1,10 @@
 //! Various Windows utilities.
 
 use std::mem::{size_of, zeroed};
+use std::os::windows::io::RawHandle;
 use std::ptr::{null, null_mut};
 
+use windows_sys::Win32::System::Pipes::PeekNamedPipe;
 use windows_sys::Win32::{
     Devices::{
         DeviceAndDriverInstallation::{
@@ -196,5 +198,26 @@ pub fn setup_job_object_grouping() -> Result<(), String> {
         // We intentionally leak the job_handle or store it for the app's lifetime
         // If we close it now, the JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE might trigger
         Ok(())
+    }
+}
+
+/// Peeks the number of bytes available in a pipe without blocking or consuming the data.
+/// Returns `None` if the handle is invalid or an error occurs.
+pub fn peek_pipe(handle: RawHandle) -> Option<u32> {
+    let handle = handle as windows_sys::Win32::Foundation::HANDLE;
+    let mut bytes_available: u32 = 0;
+
+    match unsafe {
+        PeekNamedPipe(
+            handle,
+            std::ptr::null_mut(),
+            0,
+            std::ptr::null_mut(),
+            &mut bytes_available,
+            std::ptr::null_mut(),
+        )
+    } {
+        0 => None,
+        _ => Some(bytes_available),
     }
 }

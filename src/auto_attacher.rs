@@ -56,9 +56,22 @@ impl ProfileData {
             .take()
             .expect("Failed to take stderr of the process");
 
-        let mut buf = String::new();
-        stderr.read_to_string(&mut buf).ok();
-        self.last_error = Some(buf);
+        // Peek the pipe to see if there is data available, since read() blocks indefinitely if the
+        // process was killed before it could send EOF
+        match win_utils::peek_pipe(stderr.as_raw_handle()) {
+            None | Some(0) => {
+                self.last_error = Some("Process exited with no error message.".to_string());
+            }
+
+            Some(bytes_available) => {
+                let mut buf = vec![0u8; bytes_available as usize];
+                let _ = stderr.read(&mut buf);
+
+                let error_str = String::from_utf8_lossy(&buf).to_string();
+
+                self.last_error = Some(error_str);
+            }
+        }
 
         self.process = None;
     }
