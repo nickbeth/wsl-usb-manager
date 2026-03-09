@@ -36,20 +36,15 @@ impl ProfileData {
         let Some(process) = self.process.as_mut() else {
             return;
         };
-        println!("Checking process status for profile...");
         // Poll the process to see if it exited (likely because of an error)
         let Ok(Some(exit_status)) = process.try_wait() else {
-            println!("Process is still running.");
             return;
         };
-        println!("Process exited with status: {:?}", exit_status);
-
         // Should not happen, ignore
         if exit_status.success() {
             return;
         }
 
-        println!("Process for profile exited with an error, capturing stderr...");
         // Check that we can read stderr
         let mut stderr = process
             .stderr
