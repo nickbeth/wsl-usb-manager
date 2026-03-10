@@ -1,5 +1,8 @@
-use std::{collections::HashMap, hash::Hash, io::Read, os::windows::io::AsRawHandle};
+use std::{
+    collections::HashMap, hash::Hash, io::Read, os::windows::io::AsRawHandle, thread::JoinHandle,
+};
 
+use native_windows_gui as nwg;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -81,9 +84,16 @@ impl Drop for ProfileData {
     }
 }
 
+struct ProcessWatcher {
+    thread: JoinHandle<()>,
+    stop_event: win_utils::Event,
+}
+
 #[derive(Default)]
 pub struct AutoAttacher {
     profiles: HashMap<Profile, ProfileData>,
+    process_watcher: Option<ProcessWatcher>,
+    pub ui_refresh_notice: Option<nwg::NoticeSender>,
 }
 
 impl AutoAttacher {
@@ -145,6 +155,8 @@ impl AutoAttacher {
         // If there was a process for this profile already, it will be killed automatically
         // when the old ProfileData is dropped, see Drop implementation of ProfileData
         self.profiles.insert(profile, insert_data);
+
+        self.watch_processes();
         Ok(())
     }
 
@@ -155,6 +167,7 @@ impl AutoAttacher {
 
         self.profiles.remove(profile);
 
+        self.watch_processes();
         Ok(())
     }
 
@@ -171,5 +184,52 @@ impl AutoAttacher {
                 }
             })
             .collect()
+    }
+
+    fn watch_processes(&mut self) {
+        // Stop the already running watcher and spawn a new one with the updated list of processes
+        if let Some(watcher) = self.process_watcher.take() {
+            watcher.stop_event.set();
+            watcher
+                .thread
+                .join()
+                .expect("Failed to join process watcher thread");
+        }
+
+        let mut process_handles: Vec<win_utils::SendHandle> = self
+            .profiles
+            .values()
+            .filter_map(|data| data.process.as_ref().map(|p| p.as_raw_handle()))
+            .collect::<Vec<_>>()
+            .into_iter()
+            .map(win_utils::SendHandle)
+            .collect();
+
+        // Add a stop event to the handle list so that the thread can be manually woken up
+        let stop_event = win_utils::Event::new();
+        process_handles.push(stop_event.as_raw_handle().into());
+
+        let refresh_notice = self.ui_refresh_notice;
+
+        let watcher_thread = std::thread::spawn(move || {
+            let Some(wakeup_index) = win_utils::wait_for_handles(&process_handles) else {
+                // Wait failed, not a critical error
+                return;
+            };
+            let Some(notice) = refresh_notice else {
+                return;
+            };
+
+            // If the stop event (last handle) was signaled, skip refreshing the UI since the UI
+            // thread is already refreshing the profiles as part of the user interaction
+            if wakeup_index < process_handles.len() - 1 {
+                notice.notice();
+            }
+        });
+
+        self.process_watcher = Some(ProcessWatcher {
+            thread: watcher_thread,
+            stop_event,
+        });
     }
 }

@@ -1,10 +1,15 @@
 //! Various Windows utilities.
 
+use std::fmt::Debug;
 use std::mem::{size_of, zeroed};
 use std::os::windows::io::RawHandle;
 use std::ptr::{null, null_mut};
 
+use windows_sys::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
 use windows_sys::Win32::System::Pipes::PeekNamedPipe;
+use windows_sys::Win32::System::Threading::{
+    CreateEventW, INFINITE, SetEvent, WaitForMultipleObjects,
+};
 use windows_sys::Win32::{
     Devices::{
         DeviceAndDriverInstallation::{
@@ -219,5 +224,102 @@ pub fn peek_pipe(handle: RawHandle) -> Option<u32> {
     } {
         0 => None,
         _ => Some(bytes_available),
+    }
+}
+
+#[repr(transparent)]
+#[derive(Clone)]
+pub struct Event(HANDLE);
+unsafe impl Send for Event {}
+
+impl From<Event> for HANDLE {
+    fn from(event: Event) -> Self {
+        event.0
+    }
+}
+
+impl Event {
+    /// Creates a new manual-reset, unsignaled anonymous event.
+    pub fn new() -> Self {
+        let h = unsafe {
+            CreateEventW(
+                null_mut(), // Attributes
+                0,          // bManualReset: TRUE
+                0,          // bInitialState: FALSE
+                null_mut(), // Name
+            )
+        };
+        if h.is_null() {
+            panic!("Failed to create Win32 Event");
+        }
+        Event(h)
+    }
+
+    /// Transitions the event to a signaled state, waking up the waiting thread.
+    pub fn set(&self) {
+        unsafe {
+            SetEvent(self.0);
+        }
+    }
+
+    pub fn as_raw_handle(&self) -> HANDLE {
+        self.0
+    }
+}
+
+impl Debug for Event {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("Event").field(&self.0).finish()
+    }
+}
+
+impl Drop for Event {
+    fn drop(&mut self) {
+        unsafe {
+            CloseHandle(self.0);
+        }
+    }
+}
+
+#[repr(transparent)]
+pub struct SendHandle(pub RawHandle);
+unsafe impl Send for SendHandle {}
+
+impl From<HANDLE> for SendHandle {
+    fn from(handle: HANDLE) -> Self {
+        SendHandle(handle as RawHandle)
+    }
+}
+
+impl From<Event> for SendHandle {
+    fn from(event: Event) -> Self {
+        SendHandle(event.as_raw_handle())
+    }
+}
+
+impl Debug for SendHandle {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_tuple("SendHandle").field(&self.0).finish()
+    }
+}
+
+/// Waits for any of the given handles to be signaled.
+/// Returns the index of the handle that was signaled, or `None` if an error occurs.
+pub fn wait_for_handles(handles: &[SendHandle]) -> Option<usize> {
+    let wait_result = unsafe {
+        WaitForMultipleObjects(
+            handles.len() as u32,
+            handles.as_ptr() as *const HANDLE,
+            0, // wait for any
+            INFINITE,
+        )
+    } as usize;
+
+    const WAIT_OBJ_0: usize = WAIT_OBJECT_0 as usize;
+
+    if wait_result < WAIT_OBJ_0 + handles.len() {
+        Some(wait_result - WAIT_OBJ_0)
+    } else {
+        None
     }
 }

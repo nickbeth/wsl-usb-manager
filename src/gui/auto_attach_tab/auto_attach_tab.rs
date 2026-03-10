@@ -226,6 +226,9 @@ impl PartialUi for AutoAttachTab {
             .parent(parent_ref.unwrap())
             .build(&mut data.refresh_notice)?;
 
+        // Give the refresh notice to the auto attacher so that it can trigger UI refreshes
+        data.auto_attacher.borrow_mut().ui_refresh_notice = Some(data.refresh_notice.sender());
+
         nwg::ListView::builder()
             .list_style(nwg::ListViewStyle::Detailed)
             .focus(true)
