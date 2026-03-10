@@ -57,8 +57,8 @@ pub struct AutoAttachTab {
 
     // Device context menu
     menu: nwg::Menu,
-    menu_delete: nwg::MenuItem,
     menu_restart: nwg::MenuItem,
+    menu_delete: nwg::MenuItem,
 }
 
 impl AutoAttachTab {
@@ -273,13 +273,13 @@ impl PartialUi for AutoAttachTab {
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Delete")
-            .build(&mut data.menu_delete)?;
+            .text("Restart")
+            .build(&mut data.menu_restart)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Restart")
-            .build(&mut data.menu_restart)?;
+            .text("Delete")
+            .build(&mut data.menu_delete)?;
 
         // Build nested partial
         AutoAttachInfo::build_partial(&mut data.auto_attach_info, Some(&data.details_info_frame))?;
