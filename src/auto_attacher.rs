@@ -116,6 +116,7 @@ impl AutoAttacher {
         }
 
         self.activate_profile(new_profile)
+            .inspect(|_| self.on_profiles_changed())
     }
 
     pub fn add_port(&mut self, device: &UsbDevice) -> Result<(), String> {
@@ -132,6 +133,7 @@ impl AutoAttacher {
         }
 
         self.activate_profile(new_profile)
+            .inspect(|_| self.on_profiles_changed())
     }
 
     pub fn activate_profile(&mut self, profile: Profile) -> Result<(), String> {
@@ -155,8 +157,6 @@ impl AutoAttacher {
         // If there was a process for this profile already, it will be killed automatically
         // when the old ProfileData is dropped, see Drop implementation of ProfileData
         self.profiles.insert(profile, insert_data);
-
-        self.watch_processes();
         Ok(())
     }
 
@@ -167,7 +167,7 @@ impl AutoAttacher {
 
         self.profiles.remove(profile);
 
-        self.watch_processes();
+        self.on_profiles_changed();
         Ok(())
     }
 
@@ -186,6 +186,10 @@ impl AutoAttacher {
             .collect()
     }
 
+    pub fn on_profiles_changed(&mut self) {
+        self.watch_processes();
+    }
+
     fn watch_processes(&mut self) {
         // Stop the already running watcher and spawn a new one with the updated list of processes
         if let Some(watcher) = self.process_watcher.take() {
@@ -194,6 +198,11 @@ impl AutoAttacher {
                 .thread
                 .join()
                 .expect("Failed to join process watcher thread");
+        }
+
+        // Skip running the watcher thread if there are no profiles
+        if self.profiles.is_empty() {
+            return;
         }
 
         let mut process_handles: Vec<win_utils::SendHandle> = self
