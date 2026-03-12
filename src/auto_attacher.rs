@@ -231,14 +231,10 @@ impl AutoAttacher {
             .unwrap()
             .profiles
             .iter_mut()
-            .map(|(profile, data)| {
-                data.update_process_status();
-
-                ProfileInfo {
-                    profile: profile.clone(),
-                    active: data.process.is_some(),
-                    last_error: data.last_error.clone(),
-                }
+            .map(|(profile, data)| ProfileInfo {
+                profile: profile.clone(),
+                active: data.process.is_some(),
+                last_error: data.last_error.clone(),
             })
             .collect()
     }
@@ -264,19 +260,25 @@ impl AutoAttacher {
                         .collect()
                 };
 
+                // Push the wake event handle as part of the handles to wait on, for manual wakeup
                 process_handles.push(win_utils::SendHandle(wake_raw as _));
 
                 let Some(wakeup_index) = win_utils::wait_for_handles(&process_handles) else {
                     continue;
                 };
 
-                // Only notify when a process handle was signaled, not the wake event
-                if wakeup_index < process_handles.len() - 1 {
-                    let notice = shared.lock().unwrap().ui_refresh_notice;
-                    if let Some(notice) = notice {
-                        notice.notice();
-                    }
+                // Return to waiting if the stop event was signaled
+                if wakeup_index == process_handles.len() - 1 {
+                    continue;
                 }
+
+                // Some process status changed, update the status
+                let mut state = shared.lock().unwrap();
+                state.profiles.values_mut().for_each(|data| {
+                    data.update_process_status();
+                });
+                // Notify the UI
+                state.ui_refresh_notice.inspect(|n| n.notice());
             }
         });
 
