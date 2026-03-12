@@ -7,7 +7,7 @@ mod gui;
 mod usbipd;
 mod win_utils;
 
-use std::{cell::RefCell, process::ExitCode, rc::Rc};
+use std::{cell::RefCell, path::PathBuf, process::ExitCode, rc::Rc};
 
 use args::Args;
 use auto_attacher::AutoAttacher;
@@ -45,9 +45,21 @@ fn main() -> ExitCode {
         }
     }
 
-    let auto_attacher = Rc::new(RefCell::new(AutoAttacher::new()));
+    let storage_path =
+        match std::env::var("LOCALAPPDATA").map(|dir| PathBuf::from(dir).join("WSL USB Manager")) {
+            Ok(path) => std::fs::create_dir_all(&path).map(|_| path).ok(),
+            Err(_) => None,
+        };
 
-    let start = gui::start(&auto_attacher, args.minimized);
+    let auto_attacher = if let Some(mut path) = storage_path {
+        path.push("profiles.json");
+        AutoAttacher::with_storage(&path)
+    } else {
+        AutoAttacher::new()
+    };
+    let auto_attacher_rc = Rc::new(RefCell::new(auto_attacher));
+
+    let start = gui::start(&auto_attacher_rc, args.minimized);
 
     if let Err(err) = start {
         gui::show_start_failure(&err.to_string());
