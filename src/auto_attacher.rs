@@ -5,6 +5,7 @@ use std::{
     io::{Read, Write},
     os::windows::io::AsRawHandle,
     path::{Path, PathBuf},
+    sync::{Arc, Mutex},
     thread::JoinHandle,
 };
 
@@ -91,21 +92,34 @@ impl Drop for ProfileData {
 }
 
 struct ProcessWatcher {
+    #[allow(dead_code)]
     thread: JoinHandle<()>,
-    stop_event: win_utils::Event,
+    wake_event: win_utils::Event,
+}
+
+#[derive(Default)]
+struct SharedState {
+    profiles: HashMap<Profile, ProfileData>,
+    ui_refresh_notice: Option<nwg::NoticeSender>,
 }
 
 #[derive(Default)]
 pub struct AutoAttacher {
-    profiles: HashMap<Profile, ProfileData>,
+    shared: Arc<Mutex<SharedState>>,
     process_watcher: Option<ProcessWatcher>,
-    pub ui_refresh_notice: Option<nwg::NoticeSender>,
     storage_path: Option<PathBuf>,
 }
 
 impl AutoAttacher {
     pub fn new() -> Self {
         Default::default()
+    }
+
+    pub fn set_ui_refresh_notice(&mut self, notice: Option<nwg::NoticeSender>) {
+        self.shared.lock().unwrap().ui_refresh_notice = notice;
+
+        // Start the watcher when the notice is set, no point starting it earlier
+        self.start_watcher();
     }
 
     pub fn add_device(&mut self, device: &UsbDevice) -> Result<(), String> {
@@ -118,12 +132,18 @@ impl AutoAttacher {
             description: device.description.clone(),
         };
 
-        if self.profiles.contains_key(&new_profile) {
+        if self
+            .shared
+            .lock()
+            .unwrap()
+            .profiles
+            .contains_key(&new_profile)
+        {
             return Err("The device is already in the auto attach list.".to_string());
         }
 
         self.activate_profile(new_profile)
-            .inspect(|_| self.on_profiles_changed())
+            .inspect(|_| self.persist_profiles())
     }
 
     pub fn add_port(&mut self, device: &UsbDevice) -> Result<(), String> {
@@ -136,7 +156,13 @@ impl AutoAttacher {
             bus_id: bus_id.clone(),
         };
 
-        if self.profiles.contains_key(&new_profile) {
+        if self
+            .shared
+            .lock()
+            .unwrap()
+            .profiles
+            .contains_key(&new_profile)
+        {
             return Err("The port is already in the auto attach list.".to_string());
         }
 
@@ -145,7 +171,7 @@ impl AutoAttacher {
 
         // Cleanup the added policy if auto-attach fails
         self.activate_profile(new_profile)
-            .inspect(|_| self.on_profiles_changed())
+            .inspect(|_| self.persist_profiles())
             .inspect_err(|_| {
                 let _ = usbipd::policy_remove(bus_id);
             })
@@ -164,7 +190,15 @@ impl AutoAttacher {
 
         // If there was a process for this profile already, it will be killed automatically
         // when the old ProfileData is dropped, see Drop implementation of ProfileData
-        self.profiles.insert(profile, insert_data);
+        self.shared
+            .lock()
+            .unwrap()
+            .profiles
+            .insert(profile, insert_data);
+
+        if let Some(watcher) = &self.process_watcher {
+            watcher.wake_event.set();
+        }
         Ok(())
     }
 
@@ -173,14 +207,17 @@ impl AutoAttacher {
             usbipd::policy_remove(bus_id)?;
         }
 
-        self.profiles.remove(profile);
+        self.shared.lock().unwrap().profiles.remove(profile);
 
-        self.on_profiles_changed();
+        self.persist_profiles();
         Ok(())
     }
 
     pub fn profiles(&mut self) -> Vec<ProfileInfo> {
-        self.profiles
+        self.shared
+            .lock()
+            .unwrap()
+            .profiles
             .iter_mut()
             .map(|(profile, data)| {
                 data.update_process_status();
@@ -194,60 +231,46 @@ impl AutoAttacher {
             .collect()
     }
 
-    pub fn on_profiles_changed(&mut self) {
-        self.persist_profiles();
-        self.watch_processes();
-    }
-
-    fn watch_processes(&mut self) {
-        // Stop the already running watcher and spawn a new one with the updated list of processes
-        if let Some(watcher) = self.process_watcher.take() {
-            watcher.stop_event.set();
-            watcher
-                .thread
-                .join()
-                .expect("Failed to join process watcher thread");
-        }
-
-        // Skip running the watcher thread if there are no profiles
-        if self.profiles.is_empty() {
-            return;
-        }
-
-        let mut process_handles: Vec<win_utils::SendHandle> = self
-            .profiles
-            .values()
-            .filter_map(|data| data.process.as_ref().map(|p| p.as_raw_handle()))
-            .collect::<Vec<_>>()
-            .into_iter()
-            .map(win_utils::SendHandle)
-            .collect();
-
-        // Add a stop event to the handle list so that the thread can be manually woken up
-        let stop_event = win_utils::Event::new();
-        process_handles.push(stop_event.as_raw_handle().into());
-
-        let refresh_notice = self.ui_refresh_notice;
+    fn start_watcher(&mut self) {
+        let wake_event = win_utils::Event::new();
+        let wake_raw = wake_event.as_raw_handle() as usize;
+        let shared = self.shared.clone();
 
         let watcher_thread = std::thread::spawn(move || {
-            let Some(wakeup_index) = win_utils::wait_for_handles(&process_handles) else {
-                // Wait failed, not a critical error
-                return;
-            };
-            let Some(notice) = refresh_notice else {
-                return;
-            };
+            loop {
+                let mut process_handles: Vec<win_utils::SendHandle> = {
+                    shared
+                        .lock()
+                        .unwrap()
+                        .profiles
+                        .values()
+                        .filter_map(|data| {
+                            data.process
+                                .as_ref()
+                                .map(|p| win_utils::SendHandle(p.as_raw_handle()))
+                        })
+                        .collect()
+                };
 
-            // If the stop event (last handle) was signaled, skip refreshing the UI since the UI
-            // thread is already refreshing the profiles as part of the user interaction
-            if wakeup_index < process_handles.len() - 1 {
-                notice.notice();
+                process_handles.push(win_utils::SendHandle(wake_raw as _));
+
+                let Some(wakeup_index) = win_utils::wait_for_handles(&process_handles) else {
+                    continue;
+                };
+
+                // Only notify when a process handle was signaled, not the wake event
+                if wakeup_index < process_handles.len() - 1 {
+                    let notice = shared.lock().unwrap().ui_refresh_notice;
+                    if let Some(notice) = notice {
+                        notice.notice();
+                    }
+                }
             }
         });
 
         self.process_watcher = Some(ProcessWatcher {
             thread: watcher_thread,
-            stop_event,
+            wake_event,
         });
     }
 
@@ -275,7 +298,6 @@ impl AutoAttacher {
             let _ = attacher.activate_profile(profile);
         }
 
-        attacher.watch_processes();
         attacher
     }
 
@@ -285,7 +307,8 @@ impl AutoAttacher {
             return;
         };
 
-        let profiles = self.profiles.keys().collect::<Vec<_>>();
+        let shared = self.shared.lock().unwrap();
+        let profiles = shared.profiles.keys().collect::<Vec<_>>();
 
         let serialized = match serde_json::to_string_pretty(&profiles) {
             Ok(json) => json,

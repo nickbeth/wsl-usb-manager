@@ -205,6 +205,11 @@ impl GuiTab for AutoAttachTab {
         self.window.set(window.handle);
         self.init_list();
         self.refresh();
+
+        // Give the refresh notice to the auto attacher so that it can trigger UI refreshes
+        self.auto_attacher
+            .borrow_mut()
+            .set_ui_refresh_notice(Some(self.refresh_notice.sender()));
     }
 
     fn refresh(&self) {
@@ -225,9 +230,6 @@ impl PartialUi for AutoAttachTab {
         nwg::Notice::builder()
             .parent(parent_ref.unwrap())
             .build(&mut data.refresh_notice)?;
-
-        // Give the refresh notice to the auto attacher so that it can trigger UI refreshes
-        data.auto_attacher.borrow_mut().ui_refresh_notice = Some(data.refresh_notice.sender());
 
         nwg::ListView::builder()
             .list_style(nwg::ListViewStyle::Detailed)
