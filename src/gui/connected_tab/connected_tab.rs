@@ -37,6 +37,9 @@ pub struct ConnectedTab {
 
     window: RefCell<Rc<nwg::Window>>,
 
+    /// A notice to refresh the connected tab
+    refresh_notice: nwg::Notice,
+
     /// A notice sender to notify the auto attach tab to refresh
     pub auto_attach_notice: Cell<Option<nwg::NoticeSender>>,
 
@@ -273,7 +276,8 @@ impl ConnectedTab {
         // Prepare closure access to parent data
         let parent_window = Rc::downgrade(&self.window.borrow());
         let child_ui = Rc::downgrade(&ui.inner);
-        let notice = self.auto_attach_notice.get();
+        let connected_tab_notice = self.refresh_notice.sender();
+        let auto_attach_notice = self.auto_attach_notice.get();
 
         let parent_handler =
             nwg::full_bind_event_handler(&ui.window.handle, move |evt, _evt_data, handle| {
@@ -287,7 +291,8 @@ impl ConnectedTab {
 
                 if evt == nwg::Event::OnWindowClose && handle == ui.window.handle {
                     parent_window.set_enabled(true);
-                    if let Some(n) = notice {
+                    connected_tab_notice.notice();
+                    if let Some(n) = auto_attach_notice {
                         n.notice();
                     }
                 }
@@ -401,6 +406,10 @@ impl PartialUi for ConnectedTab {
             .ex_flags(nwg::ListViewExFlags::FULL_ROW_SELECT)
             .parent(parent_ref.unwrap())
             .build(&mut data.list_view)?;
+
+        nwg::Notice::builder()
+            .parent(parent_ref.unwrap())
+            .build(&mut data.refresh_notice)?;
 
         nwg::Frame::builder()
             .parent(parent_ref.unwrap())
@@ -535,6 +544,11 @@ impl PartialUi for ConnectedTab {
             nwg::Event::OnWindowClose => {
                 if handle == self.device_info_frame.handle {
                     ConnectedTab::inhibit_close(evt_data);
+                }
+            }
+            nwg::Event::OnNotice => {
+                if handle == self.refresh_notice.handle {
+                    ConnectedTab::refresh(self);
                 }
             }
             nwg::Event::OnButtonClick => {
