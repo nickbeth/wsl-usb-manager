@@ -1,5 +1,11 @@
 use std::{
-    collections::HashMap, hash::Hash, io::Read, os::windows::io::AsRawHandle, thread::JoinHandle,
+    collections::HashMap,
+    fs::File,
+    hash::Hash,
+    io::{Read, Write},
+    os::windows::io::AsRawHandle,
+    path::{Path, PathBuf},
+    thread::JoinHandle,
 };
 
 use native_windows_gui as nwg;
@@ -94,6 +100,7 @@ pub struct AutoAttacher {
     profiles: HashMap<Profile, ProfileData>,
     process_watcher: Option<ProcessWatcher>,
     pub ui_refresh_notice: Option<nwg::NoticeSender>,
+    storage_path: Option<PathBuf>,
 }
 
 impl AutoAttacher {
@@ -120,33 +127,34 @@ impl AutoAttacher {
     }
 
     pub fn add_port(&mut self, device: &UsbDevice) -> Result<(), String> {
+        let bus_id = device
+            .bus_id
+            .as_ref()
+            .ok_or("The device does not have a bus ID.".to_string())?;
+
         let new_profile = Profile::Port {
-            bus_id: device
-                .bus_id
-                .as_ref()
-                .ok_or("The device does not have a bus ID.".to_string())?
-                .to_owned(),
+            bus_id: bus_id.clone(),
         };
 
         if self.profiles.contains_key(&new_profile) {
             return Err("The port is already in the auto attach list.".to_string());
         }
 
+        // Binds the device as a (wanted) side effect
+        usbipd::policy_add(bus_id)?;
+
+        // Cleanup the added policy if auto-attach fails
         self.activate_profile(new_profile)
             .inspect(|_| self.on_profiles_changed())
+            .inspect_err(|_| {
+                let _ = usbipd::policy_remove(bus_id);
+            })
     }
 
     pub fn activate_profile(&mut self, profile: Profile) -> Result<(), String> {
         let process = match &profile {
             Profile::Device { hw_id, .. } => usbipd::auto_attach_device(hw_id),
-            Profile::Port { bus_id } => {
-                // Binds the device as a (wanted) side effect
-                usbipd::policy_add(bus_id)?;
-                usbipd::auto_attach_port(bus_id).inspect_err(|_| {
-                    // Cleanup the added policy if auto-attach fails
-                    let _ = usbipd::policy_remove(bus_id);
-                })
-            }
+            Profile::Port { bus_id } => usbipd::auto_attach_port(bus_id),
         }?;
 
         let insert_data = ProfileData {
@@ -187,6 +195,7 @@ impl AutoAttacher {
     }
 
     pub fn on_profiles_changed(&mut self) {
+        self.persist_profiles();
         self.watch_processes();
     }
 
@@ -240,5 +249,53 @@ impl AutoAttacher {
             thread: watcher_thread,
             stop_event,
         });
+    }
+
+    pub fn with_storage(storage_path: &Path) -> Self {
+        let mut attacher = AutoAttacher {
+            storage_path: Some(storage_path.to_owned()),
+            ..Default::default()
+        };
+
+        let Ok(mut file) = File::open(storage_path) else {
+            return attacher;
+        };
+
+        let mut buf = Vec::new();
+        if file.read_to_end(&mut buf).is_err() {
+            return attacher;
+        }
+
+        let persisted_profiles: Vec<Profile> = match serde_json::from_slice(&buf) {
+            Ok(profiles) => profiles,
+            Err(_) => return attacher,
+        };
+
+        for profile in persisted_profiles {
+            let _ = attacher.activate_profile(profile);
+        }
+
+        attacher.watch_processes();
+        attacher
+    }
+
+    pub fn persist_profiles(&self) {
+        let Some(storage_path) = &self.storage_path else {
+            // Skip if no storage path was provided
+            return;
+        };
+
+        let profiles = self.profiles.keys().collect::<Vec<_>>();
+
+        let serialized = match serde_json::to_string_pretty(&profiles) {
+            Ok(json) => json,
+            Err(_) => return,
+        };
+
+        let Ok(mut file) = File::create(storage_path) else {
+            return;
+        };
+
+        let _ = file.write_all(serialized.as_bytes());
     }
 }
