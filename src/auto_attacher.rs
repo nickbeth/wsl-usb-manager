@@ -17,7 +17,7 @@ use crate::{
     win_utils,
 };
 
-#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq)]
 pub enum Profile {
     Device {
         hw_id: String,
@@ -26,6 +26,16 @@ pub enum Profile {
     Port {
         bus_id: String,
     },
+}
+
+// Devices can change description while being bound/unbound, don't include it in the hash
+impl Hash for Profile {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        match self {
+            Profile::Device { hw_id, .. } => hw_id.hash(state),
+            Profile::Port { bus_id } => bus_id.hash(state),
+        }
+    }
 }
 
 #[derive(Default)]
