@@ -60,8 +60,10 @@ impl ProfileData {
         let Ok(Some(exit_status)) = process.try_wait() else {
             return;
         };
-        // Should not happen, ignore
+        // Process exited with no error (WSL was shut down), clear the process without error
         if exit_status.success() {
+            self.process = None;
+            self.last_error = Some("Process exited without error.".to_string());
             return;
         }
 
