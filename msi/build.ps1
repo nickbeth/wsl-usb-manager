@@ -11,7 +11,7 @@ dotnet clean msi
 New-Item -ItemType Directory -Path msi/staging -Force
 
 # Copy the files to the staging directory
-Copy-Item target/release/wsl-usb-manager.exe msi/staging/wsl-usb-manager.exe
+Copy-Item target/x86_64-pc-windows-msvc/release/wsl-usb-manager.exe msi/staging/wsl-usb-manager.exe
 Copy-Item LICENSE.md msi/staging/LICENSE.md
 
 # Run a dotnet build with some environment variables set
