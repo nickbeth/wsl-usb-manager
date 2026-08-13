@@ -9,6 +9,7 @@ use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 use crate::{
     auto_attacher::AutoAttacher,
     gui::{nwg_ext::BitmapEx, tray::Tray},
+    i18n::{Translator, keys},
 };
 
 #[derive(Default)]
@@ -65,16 +66,25 @@ pub fn start(
     Ok(())
 }
 
+/// Loads the active translator for the startup error dialogs.
+///
+/// These `show_*` functions run before / outside the [`MainWindow`], so there
+/// is no shared translator to consult. Each call loads a fresh snapshot from
+/// the persisted language preference (silent fallback to English). The cost is
+/// a few milliseconds and only happens on startup-failure paths.
+fn startup_translator() -> Translator {
+    let lang = crate::i18n::settings::load_language().unwrap_or_else(|| "en".to_owned());
+    Translator::load(&lang).unwrap_or_default()
+}
+
 /// Shows a warning message telling the user that another instance is already running.
 ///
 /// This function is called when the app fails to obtain the instance lock because one is already held.
 pub fn show_multiple_instance_warning() {
+    let t = startup_translator();
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager: Multiple Instances Detected",
-        content: concat!(
-            "Another instance of the app is already running.\n",
-            "Please check the system tray."
-        ),
+        title: t.get(keys::DIALOG_TITLE_MULTIPLE_INSTANCES),
+        content: t.get(keys::DIALOG_CONTENT_MULTIPLE_INSTANCES),
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Warning,
     });
@@ -84,9 +94,10 @@ pub fn show_multiple_instance_warning() {
 ///
 /// This function is called when the app fails to find the USBIPD executable during startup.
 pub fn show_usbipd_not_found_error() {
+    let t = startup_translator();
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager: USBIPD Not Found",
-        content: "USBIPD was not found, please make sure that it is installed and available in the system PATH.",
+        title: t.get(keys::DIALOG_TITLE_USBIPD_NOT_FOUND),
+        content: t.get(keys::DIALOG_CONTENT_USBIPD_NOT_FOUND),
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Error,
     });
@@ -94,9 +105,10 @@ pub fn show_usbipd_not_found_error() {
 
 /// Shows an error message telling the user that an unsupported version of USBIPD was found.
 pub fn show_usbipd_unsupported_version_error() {
+    let t = startup_translator();
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager: Unsupported USBIPD Version",
-        content: "An unsupported version of USBIPD was found, please install USBIPD version 4.2.0 or newer.",
+        title: t.get(keys::DIALOG_TITLE_USBIPD_UNSUPPORTED),
+        content: t.get(keys::DIALOG_CONTENT_USBIPD_UNSUPPORTED),
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Error,
     });
@@ -107,18 +119,11 @@ pub fn show_usbipd_unsupported_version_error() {
 ///
 /// This function is called when the app fails to start the GUI.
 pub fn show_start_failure(error: &str) {
-    let content = format!(
-        concat!(
-            "An error occurred while starting the app, ",
-            "try opening the app again or reboot the system if the issue persists.\n\n",
-            "Error:\n",
-            "{}"
-        ),
-        error
-    );
+    let t = startup_translator();
+    let content = t.getf(keys::DIALOG_CONTENT_START_FAILURE, &[("error", error)]);
 
     nwg::message(&nwg::MessageParams {
-        title: "WSL USB Manager: Start Failure",
+        title: t.get(keys::DIALOG_TITLE_START_FAILURE),
         content: &content,
         buttons: nwg::MessageButtons::Ok,
         icons: nwg::MessageIcons::Error,

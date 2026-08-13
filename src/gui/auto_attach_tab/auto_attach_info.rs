@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use native_windows_gui as nwg;
 use nwg::PartialUi;
 use nwg::stretch::{
@@ -6,6 +9,7 @@ use nwg::stretch::{
 };
 
 use crate::auto_attacher::{Profile, ProfileInfo};
+use crate::i18n::{Localizable, Translator, keys};
 
 /// The auto attach profile info tab.
 /// It displays detailed information about an auto attach profile.
@@ -23,6 +27,10 @@ pub struct AutoAttachInfo {
     font_bold: nwg::Font,
     font_bold_big: nwg::Font,
 
+    /// Active translator. Injected by the parent tab via `set_translator` and
+    /// kept in sync on language switch.
+    translator: RefCell<Rc<Translator>>,
+
     info_layout: nwg::FlexboxLayout,
 
     auto_attach_info: nwg::Label,
@@ -38,10 +46,18 @@ pub struct AutoAttachInfo {
 }
 
 impl AutoAttachInfo {
+    /// Updates the shared translator snapshot. Called on init and on every
+    /// language switch.
+    pub fn set_translator(&self, t: Rc<Translator>) {
+        *self.translator.borrow_mut() = t;
+    }
+
     pub fn update(&self, info: Option<&ProfileInfo>) {
+        let t = self.translator.borrow().clone();
         if info.is_none() {
             self.bus_id_content.set_text("-");
-            self.description_content.set_text("No profile selected");
+            self.description_content
+                .set_text(t.get(keys::PLACEHOLDER_NO_PROFILE_SELECTED));
             self.last_error_content.set_text("");
             return;
         }
@@ -50,23 +66,52 @@ impl AutoAttachInfo {
 
         match &info.profile {
             Profile::Device { hw_id, description } => {
-                self.bus_id.set_text("Hardware ID:");
+                self.bus_id
+                    .set_text(t.get(keys::INFO_AUTO_ATTACH_HARDWARE_ID_LABEL));
                 self.bus_id_content.set_text(hw_id);
-                self.description_content
-                    .set_text(description.as_deref().unwrap_or("No description available"));
+                let description = description
+                    .clone()
+                    .unwrap_or_else(|| t.get(keys::PLACEHOLDER_NO_DESCRIPTION).to_owned());
+                self.description_content.set_text(&description);
             }
             Profile::Port { bus_id } => {
-                self.bus_id.set_text("Bus ID:");
+                self.bus_id
+                    .set_text(t.get(keys::INFO_AUTO_ATTACH_BUS_ID_LABEL));
                 self.bus_id_content.set_text(bus_id);
                 self.description_content
-                    .set_text("Any device connected to this port");
+                    .set_text(t.get(keys::PLACEHOLDER_ANY_DEVICE_PORT));
             }
         }
 
         self.status_content
-            .set_text(if info.active { "Active" } else { "Inactive" });
-        self.last_error_content
-            .set_text(info.last_error.as_deref().unwrap_or("No error"));
+            .set_text(if info.active {
+                t.get(keys::STATUS_ACTIVE)
+            } else {
+                t.get(keys::STATUS_INACTIVE)
+            });
+        let last_error = info
+            .last_error
+            .clone()
+            .unwrap_or_else(|| t.get(keys::PLACEHOLDER_NO_ERROR).to_owned());
+        self.last_error_content.set_text(&last_error);
+    }
+}
+
+impl Localizable for AutoAttachInfo {
+    fn re_localize(&self, t: &Translator) {
+        // Static labels only. The `bus_id` label is dynamic (Hardware ID vs
+        // Bus ID depending on profile kind), so we set the default here and
+        // let `update` overwrite it with the correct value immediately after.
+        self.auto_attach_info
+            .set_text(t.get(keys::INFO_AUTO_ATTACH_TITLE));
+        self.bus_id
+            .set_text(t.get(keys::INFO_AUTO_ATTACH_BUS_ID_LABEL));
+        self.description
+            .set_text(t.get(keys::INFO_AUTO_ATTACH_DESCRIPTION_LABEL));
+        self.status
+            .set_text(t.get(keys::INFO_AUTO_ATTACH_STATUS_LABEL));
+        self.last_error
+            .set_text(t.get(keys::INFO_AUTO_ATTACH_LAST_ERROR_LABEL));
     }
 }
 
@@ -77,6 +122,10 @@ impl PartialUi for AutoAttachInfo {
     ) -> Result<(), nwg::NwgError> {
         let parent = parent.map(|p| p.into());
         let parent_ref = parent.as_ref();
+
+        // Initial English text; the real language is applied by `re_localize`
+        // once the parent injects the active translator.
+        let t = Translator::default();
 
         // Resources
         nwg::Font::builder()
@@ -93,7 +142,7 @@ impl PartialUi for AutoAttachInfo {
 
         // Controls
         nwg::Label::builder()
-            .text("Auto Attach Info")
+            .text(t.get(keys::INFO_AUTO_ATTACH_TITLE))
             .font(Some(&data.font_bold_big))
             .parent(parent_ref.unwrap())
             .build(&mut data.auto_attach_info)?;
@@ -103,7 +152,7 @@ impl PartialUi for AutoAttachInfo {
             .build(&mut data.separator)?;
 
         nwg::Label::builder()
-            .text("Bus ID:")
+            .text(t.get(keys::INFO_AUTO_ATTACH_BUS_ID_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -114,7 +163,7 @@ impl PartialUi for AutoAttachInfo {
             .build(&mut data.bus_id_content)?;
 
         nwg::Label::builder()
-            .text("Description:")
+            .text(t.get(keys::INFO_AUTO_ATTACH_DESCRIPTION_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -126,7 +175,7 @@ impl PartialUi for AutoAttachInfo {
             .build(&mut data.description_content)?;
 
         nwg::Label::builder()
-            .text("Auto Attach Status:")
+            .text(t.get(keys::INFO_AUTO_ATTACH_STATUS_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -137,7 +186,7 @@ impl PartialUi for AutoAttachInfo {
             .build(&mut data.status_content)?;
 
         nwg::Label::builder()
-            .text("Last Error:")
+            .text(t.get(keys::INFO_AUTO_ATTACH_LAST_ERROR_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())

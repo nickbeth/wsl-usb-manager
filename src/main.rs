@@ -4,6 +4,7 @@
 mod args;
 mod auto_attacher;
 mod gui;
+mod i18n;
 mod usbipd;
 mod win_utils;
 

@@ -15,8 +15,9 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use super::device_info::DeviceInfo;
 use crate::gui::{
     RESOURCES, connected_tab::auto_attach::AutoAttachWindowUi, main_window::GuiTab,
-    nwg_ext::MenuItemEx,
+    nwg_ext::{ListViewExt, MenuItemEx},
 };
+use crate::i18n::{Localizable, Translator, keys};
 use crate::usbipd::{self, UsbDevice, UsbipState};
 use crate::{auto_attacher::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
 
@@ -36,6 +37,10 @@ pub struct ConnectedTab {
     auto_attach_window: Cell<Option<Box<AutoAttachWindowUi>>>,
 
     window: RefCell<Rc<nwg::Window>>,
+
+    /// Active translator snapshot. Injected by the main window on init and on
+    /// every language switch.
+    translator: RefCell<Rc<Translator>>,
 
     /// A notice to refresh the connected tab
     refresh_notice: nwg::Notice,
@@ -81,15 +86,23 @@ impl ConnectedTab {
     }
 
     fn init_list(&self) {
+        let t = self.translator.borrow().clone();
         let list = &self.list_view;
         list.clear();
-        list.insert_column("Bus ID");
-        list.insert_column("State");
-        list.insert_column("Device");
+        list.insert_column(t.get(keys::LIST_CONNECTED_BUS_ID));
+        list.insert_column(t.get(keys::LIST_CONNECTED_STATE));
+        list.insert_column(t.get(keys::LIST_CONNECTED_DEVICE));
         list.set_headers_enabled(true);
 
         // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
-        list.insert_items_row(None, &["-", &format!("{}  ", UsbipState::None), "Device"]);
+        list.insert_items_row(
+            None,
+            &[
+                "-",
+                &format!("{}  ", UsbipState::None.to_localized_string(&t)),
+                t.get(keys::PLACEHOLDER_UNKNOWN_DEVICE),
+            ],
+        );
 
         list.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
         list.set_column_width(1, LVSCW_AUTOSIZE as isize);
@@ -101,6 +114,7 @@ impl ConnectedTab {
 
     /// Clears the device list and reloads it with the provided connected devices.
     fn refresh_list(&self, devices: &[usbipd::UsbDevice]) {
+        let t = self.translator.borrow().clone();
         *self.connected_devices.borrow_mut() = devices
             .iter()
             .filter(|d| d.is_connected())
@@ -109,12 +123,19 @@ impl ConnectedTab {
 
         self.list_view.clear();
         for device in self.connected_devices.borrow().iter() {
+            // Description fallback may come from the translator (distinct
+            // lifetime from the device borrow), so resolve it to an owned
+            // `String` before borrowing for the row.
+            let description = device
+                .description
+                .clone()
+                .unwrap_or_else(|| t.get(keys::PLACEHOLDER_UNKNOWN_DEVICE).to_owned());
             self.list_view.insert_items_row(
                 None,
                 &[
                     device.bus_id.as_deref().unwrap_or("-"),
-                    &device.state().to_string(),
-                    device.description.as_deref().unwrap_or("Unknown device"),
+                    &device.state().to_localized_string(&t),
+                    &description,
                 ],
             );
         }
@@ -122,6 +143,7 @@ impl ConnectedTab {
 
     /// Updates the device details panel with the currently selected device.
     fn update_device_details(&self) {
+        let t = self.translator.borrow().clone();
         let devices = self.connected_devices.borrow();
         let device = self.list_view.selected_item().and_then(|i| devices.get(i));
 
@@ -130,13 +152,13 @@ impl ConnectedTab {
         // Update buttons
         if let Some(device) = device {
             if device.is_bound() {
-                self.bind_unbind_button.set_text("Unbind");
+                self.bind_unbind_button.set_text(t.get(keys::BUTTON_UNBIND));
                 self.auto_attach_button.set_enabled(true);
 
                 // Attaching a bound device doesn't require admin privileges, hide the UAC shield icon
                 self.attach_detach_button.set_bitmap(None);
             } else {
-                self.bind_unbind_button.set_text("Bind");
+                self.bind_unbind_button.set_text(t.get(keys::BUTTON_BIND));
 
                 // Attaching an unbound device requires admin privileges, show the UAC shield icon
                 self.attach_detach_button
@@ -144,17 +166,18 @@ impl ConnectedTab {
             }
 
             if device.is_attached() {
-                self.attach_detach_button.set_text("Detach");
+                self.attach_detach_button.set_text(t.get(keys::BUTTON_DETACH));
             } else {
-                self.attach_detach_button.set_text("Attach");
+                self.attach_detach_button.set_text(t.get(keys::BUTTON_ATTACH));
             }
 
             self.auto_attach_button.set_enabled(true);
             self.bind_unbind_button.set_enabled(true);
             self.attach_detach_button.set_enabled(true);
         } else {
-            self.attach_detach_button.set_text("Attach");
-            self.bind_unbind_button.set_text("Bind");
+            self.attach_detach_button
+                .set_text(t.get(keys::BUTTON_ATTACH));
+            self.bind_unbind_button.set_text(t.get(keys::BUTTON_BIND));
             self.attach_detach_button.set_bitmap(None);
 
             self.auto_attach_button.set_enabled(false);
@@ -266,8 +289,9 @@ impl ConnectedTab {
             None => return,
         };
 
+        let translator = self.translator.borrow().clone();
         let Ok(mut ui) = AutoAttachWindow::build_ui(
-            AutoAttachWindow::new(device.clone(), &self.auto_attacher),
+            AutoAttachWindow::new(device.clone(), &self.auto_attacher, translator),
             &self.window.borrow(),
         ) else {
             return;
@@ -316,6 +340,7 @@ impl ConnectedTab {
     /// If an error occurs, an error dialog is shown.
     fn run_command(&self, command: impl Fn(&UsbDevice) -> Result<(), String>) {
         let window = self.window.borrow().handle;
+        let t = self.translator.borrow().clone();
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
         let cursor_event =
@@ -342,7 +367,7 @@ impl ConnectedTab {
         };
 
         if let Err(err) = result {
-            nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
+            nwg::modal_error_message(window, t.get(keys::DIALOG_TITLE_COMMAND_ERROR), &err);
         }
 
         self.refresh();
@@ -360,6 +385,36 @@ impl ConnectedTab {
     /// This is used to share the device list among multiple tabs to avoid redundant process spawning.
     pub fn refresh_with_devices(&self, devices: &[usbipd::UsbDevice]) {
         self.refresh_list(devices);
+        self.update_device_details();
+    }
+}
+
+impl Localizable for ConnectedTab {
+    fn re_localize(&self, t: &Translator) {
+        // ListView headers (no NWG API; direct LVM_SETCOLUMN)
+        self.list_view
+            .set_header_text(0, t.get(keys::LIST_CONNECTED_BUS_ID));
+        self.list_view
+            .set_header_text(1, t.get(keys::LIST_CONNECTED_STATE));
+        self.list_view
+            .set_header_text(2, t.get(keys::LIST_CONNECTED_DEVICE));
+
+        // Detail panel static labels
+        self.device_info.re_localize(t);
+
+        // Context menu items
+        self.menu_attach.set_text(t.get(keys::MENU_DEVICE_ATTACH));
+        self.menu_detach.set_text(t.get(keys::MENU_DEVICE_DETACH));
+        self.menu_bind.set_text(t.get(keys::MENU_DEVICE_BIND));
+        self.menu_bind_force
+            .set_text(t.get(keys::MENU_DEVICE_BIND_FORCE));
+        self.menu_unbind.set_text(t.get(keys::MENU_DEVICE_UNBIND));
+
+        // Repaint dynamic rows so state text follows the new language. This
+        // clears the current selection; acceptable for an infrequent action
+        // like a language switch (user can re-select).
+        let devices = self.connected_devices.borrow().clone();
+        self.refresh_list(&devices);
         self.update_device_details();
     }
 }
@@ -384,6 +439,11 @@ impl GuiTab for ConnectedTab {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
     }
+
+    fn set_translator(&self, t: Rc<Translator>) {
+        *self.translator.borrow_mut() = t.clone();
+        self.device_info.set_translator(t);
+    }
 }
 
 impl PartialUi for ConnectedTab {
@@ -393,6 +453,10 @@ impl PartialUi for ConnectedTab {
     ) -> Result<(), nwg::NwgError> {
         let parent = parent.map(|p| p.into());
         let parent_ref = parent.as_ref();
+
+        // Initial English text; the active language is applied by `re_localize`
+        // once the main window injects the translator.
+        let t = Translator::default();
 
         // Controls
         nwg::ListView::builder()
@@ -427,33 +491,33 @@ impl PartialUi for ConnectedTab {
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Attach")
+            .text(t.get(keys::BUTTON_ATTACH))
             .build(&mut data.attach_detach_button)?;
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Bind")
+            .text(t.get(keys::BUTTON_BIND))
             .build(&mut data.bind_unbind_button)?;
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Auto Attach")
+            .text(t.get(keys::BUTTON_AUTO_ATTACH))
             .build(&mut data.auto_attach_button)?;
 
         nwg::Menu::builder()
-            .text("Device")
+            .text(t.get(keys::MENU_DEVICE_LABEL))
             .popup(true)
             .parent(parent_ref.unwrap())
             .build(&mut data.menu)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Attach")
+            .text(t.get(keys::MENU_DEVICE_ATTACH))
             .build(&mut data.menu_attach)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Detach")
+            .text(t.get(keys::MENU_DEVICE_DETACH))
             .build(&mut data.menu_detach)?;
 
         nwg::MenuSeparator::builder()
@@ -462,17 +526,17 @@ impl PartialUi for ConnectedTab {
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Bind")
+            .text(t.get(keys::MENU_DEVICE_BIND))
             .build(&mut data.menu_bind)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Bind (force)")
+            .text(t.get(keys::MENU_DEVICE_BIND_FORCE))
             .build(&mut data.menu_bind_force)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Unbind")
+            .text(t.get(keys::MENU_DEVICE_UNBIND))
             .build(&mut data.menu_unbind)?;
 
         // Build nested partial

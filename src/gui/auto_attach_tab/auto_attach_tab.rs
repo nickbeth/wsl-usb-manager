@@ -14,6 +14,8 @@ use windows_sys::Win32::UI::Controls::{LVSCW_AUTOSIZE, LVSCW_AUTOSIZE_USEHEADER}
 
 use super::auto_attach_info::AutoAttachInfo;
 use crate::gui::main_window::GuiTab;
+use crate::gui::nwg_ext::{ListViewExt, MenuItemEx};
+use crate::i18n::{Localizable, Translator, keys};
 use crate::{
     auto_attacher::{AutoAttacher, Profile, ProfileInfo},
     gui::RESOURCES,
@@ -34,6 +36,10 @@ pub struct AutoAttachTab {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
 
     window: Cell<nwg::ControlHandle>,
+
+    /// Active translator snapshot. Injected by the main window on init and on
+    /// every language switch.
+    translator: RefCell<Rc<Translator>>,
 
     auto_attach_profiles: RefCell<Vec<ProfileInfo>>,
 
@@ -70,14 +76,15 @@ impl AutoAttachTab {
     }
 
     fn init_list(&self) {
+        let t = self.translator.borrow().clone();
         let dv = &self.list_view;
         dv.clear();
-        dv.insert_column("Status");
-        dv.insert_column("Description");
+        dv.insert_column(t.get(keys::LIST_AUTO_ATTACH_STATUS));
+        dv.insert_column(t.get(keys::LIST_AUTO_ATTACH_DESCRIPTION));
         dv.set_headers_enabled(true);
 
         // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
-        dv.insert_items_row(None, &["Inactive", "Device"]);
+        dv.insert_items_row(None, &[t.get(keys::STATUS_INACTIVE), t.get(keys::LIST_AUTO_ATTACH_DESCRIPTION)]);
 
         dv.set_column_width(0, LVSCW_AUTOSIZE as isize);
         dv.set_column_width(1, LVSCW_AUTOSIZE_USEHEADER as isize);
@@ -88,17 +95,27 @@ impl AutoAttachTab {
 
     /// Clears the auto attach profile list and reloads it.
     fn refresh_list(&self) {
+        let t = self.translator.borrow().clone();
         self.update_profiles();
 
         self.list_view.clear();
         for info in self.auto_attach_profiles.borrow().iter() {
             let description = match &info.profile {
-                Profile::Device { description, .. } => {
-                    Cow::Borrowed(description.as_deref().unwrap_or("Unknown device"))
-                }
-                Profile::Port { bus_id } => Cow::Owned(format!("Any device on port {}", bus_id)),
+                Profile::Device { description, .. } => Cow::<str>::Owned(
+                    description
+                        .clone()
+                        .unwrap_or_else(|| t.get(keys::PLACEHOLDER_UNKNOWN_DEVICE).to_owned()),
+                ),
+                Profile::Port { bus_id } => Cow::<str>::Owned(t.getf(
+                    keys::PLACEHOLDER_ANY_DEVICE_ON_PORT,
+                    &[("bus_id", bus_id)],
+                )),
             };
-            let status = if info.active { "Active" } else { "Inactive" };
+            let status = if info.active {
+                t.get(keys::STATUS_ACTIVE)
+            } else {
+                t.get(keys::STATUS_INACTIVE)
+            };
 
             self.list_view
                 .insert_items_row(None, &[status, description.as_ref()]);
@@ -155,6 +172,7 @@ impl AutoAttachTab {
     /// If an error occurs, an error dialog is shown.
     fn run_command(&self, command: impl Fn(&ProfileInfo) -> Result<(), String>) {
         let window = self.window.get();
+        let t = self.translator.borrow().clone();
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
         let cursor_event =
@@ -181,7 +199,7 @@ impl AutoAttachTab {
         };
 
         if let Err(err) = result {
-            nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
+            nwg::modal_error_message(window, t.get(keys::DIALOG_TITLE_COMMAND_ERROR), &err);
         }
 
         self.refresh();
@@ -197,6 +215,31 @@ impl AutoAttachTab {
         if let nwg::EventData::OnWindowClose(close_data) = data {
             close_data.close(false);
         }
+    }
+}
+
+impl Localizable for AutoAttachTab {
+    fn re_localize(&self, t: &Translator) {
+        // ListView headers
+        self.list_view
+            .set_header_text(0, t.get(keys::LIST_AUTO_ATTACH_STATUS));
+        self.list_view
+            .set_header_text(1, t.get(keys::LIST_AUTO_ATTACH_DESCRIPTION));
+
+        // Detail panel static labels
+        self.auto_attach_info.re_localize(t);
+
+        // Context menu items
+        self.menu_restart.set_text(t.get(keys::MENU_DEVICE_RESTART));
+        self.menu_delete.set_text(t.get(keys::MENU_DEVICE_DELETE));
+
+        // Buttons
+        self.button_delete.set_text(t.get(keys::BUTTON_DELETE));
+        self.button_restart.set_text(t.get(keys::BUTTON_RESTART));
+
+        // Repaint dynamic rows so status/description follow the new language.
+        self.refresh_list();
+        self.update_auto_attach_details();
     }
 }
 
@@ -216,6 +259,11 @@ impl GuiTab for AutoAttachTab {
         self.refresh_list();
         self.update_auto_attach_details();
     }
+
+    fn set_translator(&self, t: Rc<Translator>) {
+        *self.translator.borrow_mut() = t.clone();
+        self.auto_attach_info.set_translator(t);
+    }
 }
 
 impl PartialUi for AutoAttachTab {
@@ -225,6 +273,10 @@ impl PartialUi for AutoAttachTab {
     ) -> Result<(), nwg::NwgError> {
         let parent = parent.map(|p| p.into());
         let parent_ref = parent.as_ref();
+
+        // Initial English text; the active language is applied by `re_localize`
+        // once the main window injects the translator.
+        let t = Translator::default();
 
         // Controls
         nwg::Notice::builder()
@@ -259,28 +311,28 @@ impl PartialUi for AutoAttachTab {
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Delete")
+            .text(t.get(keys::BUTTON_DELETE))
             .build(&mut data.button_delete)?;
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Restart")
+            .text(t.get(keys::BUTTON_RESTART))
             .build(&mut data.button_restart)?;
 
         nwg::Menu::builder()
-            .text("Device")
+            .text(t.get(keys::MENU_DEVICE_LABEL))
             .popup(true)
             .parent(parent_ref.unwrap())
             .build(&mut data.menu)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Restart")
+            .text(t.get(keys::MENU_DEVICE_RESTART))
             .build(&mut data.menu_restart)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Delete")
+            .text(t.get(keys::MENU_DEVICE_DELETE))
             .build(&mut data.menu_delete)?;
 
         // Build nested partial
