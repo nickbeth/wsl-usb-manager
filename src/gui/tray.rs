@@ -14,6 +14,7 @@ use crate::{
         RESOURCES, helpers,
         main_window::{MainWindow, MainWindowUi},
     },
+    i18n::{Translator, keys},
     usbipd::{self, UsbDevice},
 };
 
@@ -59,6 +60,13 @@ impl Tray {
             nwg::unbind_event_handler(&handler);
         }
 
+        // Load the active translator fresh: the tray menu is rebuilt on every
+        // right-click, so this picks up language switches without the main
+        // window needing a back-reference to the tray. The cost (one tiny JSON
+        // parse) is negligible for a user-initiated low-frequency action.
+        let lang = crate::i18n::settings::load_language().unwrap_or_else(|| "en".to_owned());
+        let t = Translator::load(&lang).unwrap_or_default();
+
         let mut menu_tray = nwg::Menu::default();
         nwg::Menu::builder()
             .popup(true)
@@ -78,14 +86,17 @@ impl Tray {
                 continue;
             }
 
-            // Get device name or fallback to "Unknown Device (bus_id)"
+            // Get device name or fallback to localized "Unknown Device (bus_id)"
             let device_name = device
                 .description
                 .as_deref()
                 .map(Cow::Borrowed)
                 .unwrap_or_else(|| {
                     let bus_id = device.bus_id.as_deref().unwrap_or("-");
-                    Cow::Owned(format!("Unknown Device ({})", bus_id))
+                    Cow::Owned(t.getf(
+                        keys::TRAY_UNKNOWN_DEVICE_WITH_BUS,
+                        &[("bus_id", bus_id)],
+                    ))
                 });
             let name = device_name.as_ref();
 
@@ -100,17 +111,22 @@ impl Tray {
         }
 
         if menu_items.is_empty() {
-            self.new_menu_item(menu_tray.handle, "No bound devices", true, false)
-                .unwrap();
+            self.new_menu_item(
+                menu_tray.handle,
+                t.get(keys::PLACEHOLDER_NO_BOUND_DEVICES),
+                true,
+                false,
+            )
+            .unwrap();
         };
 
         self.new_menu_separator(menu_tray.handle).unwrap();
         let open_item = self
-            .new_menu_item(menu_tray.handle, "Open", false, false)
+            .new_menu_item(menu_tray.handle, t.get(keys::TRAY_OPEN), false, false)
             .unwrap();
         self.new_menu_separator(menu_tray.handle).unwrap();
         let exit_item = self
-            .new_menu_item(menu_tray.handle, "Exit", false, false)
+            .new_menu_item(menu_tray.handle, t.get(keys::TRAY_EXIT), false, false)
             .unwrap();
 
         let rc_self_weak = Rc::downgrade(self);
@@ -149,9 +165,14 @@ impl Tray {
                     } else {
                         // TODO: this currently blocks the UI
                         device.attach().unwrap_or_else(|err| {
+                            // Load the translator here so the error dialog
+                            // reflects the active language at click time.
+                            let lang = crate::i18n::settings::load_language()
+                                .unwrap_or_else(|| "en".to_owned());
+                            let t = Translator::load(&lang).unwrap_or_default();
                             nwg::modal_error_message(
                                 rc_self.window.handle,
-                                "WSL USB Manager: Command Error",
+                                t.get(keys::DIALOG_TITLE_COMMAND_ERROR),
                                 &err,
                             );
                         });

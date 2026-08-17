@@ -1,3 +1,6 @@
+use std::cell::RefCell;
+use std::rc::Rc;
+
 use native_windows_gui as nwg;
 use nwg::PartialUi;
 use nwg::stretch::{
@@ -5,6 +8,7 @@ use nwg::stretch::{
     style::{Dimension as D, Dimension::Points as Pt, FlexDirection},
 };
 
+use crate::i18n::{Localizable, Translator, keys};
 use crate::usbipd::{UsbDevice, UsbipState};
 
 /// The connected device info tab.
@@ -23,6 +27,10 @@ pub struct DeviceInfo {
     font_bold: nwg::Font,
     font_bold_big: nwg::Font,
 
+    /// Active translator. Injected by the parent tab via `set_translator` and
+    /// kept in sync on language switch. `Rc` so the snapshot is cheap to share.
+    translator: RefCell<Rc<Translator>>,
+
     device_info_layout: nwg::FlexboxLayout,
 
     device_info: nwg::Label,
@@ -40,7 +48,14 @@ pub struct DeviceInfo {
 }
 
 impl DeviceInfo {
+    /// Updates the shared translator snapshot. Called on init and on every
+    /// language switch.
+    pub fn set_translator(&self, t: Rc<Translator>) {
+        *self.translator.borrow_mut() = t;
+    }
+
     pub fn update(&self, device: Option<&UsbDevice>) {
+        let t = self.translator.borrow().clone();
         if let Some(device) = device {
             self.bus_id_content
                 .set_text(device.bus_id.as_deref().unwrap_or("-"));
@@ -48,20 +63,42 @@ impl DeviceInfo {
                 .set_text(device.vid_pid().as_deref().unwrap_or("-"));
             self.serial_content
                 .set_text(device.serial().as_deref().unwrap_or("-"));
-            self.state_content.set_text(&device.state().to_string());
-            self.description_content.set_text(
-                device
-                    .description
-                    .as_deref()
-                    .unwrap_or("No description available"),
-            );
+            self.state_content
+                .set_text(&device.state().to_localized_string(&t));
+            // Collect into an owned `String` so the translator borrow (with its
+            // own lifetime) does not collide with the device borrow.
+            let description = device
+                .description
+                .clone()
+                .unwrap_or_else(|| t.get(keys::PLACEHOLDER_NO_DESCRIPTION).to_owned());
+            self.description_content.set_text(&description);
         } else {
             self.bus_id_content.set_text("-");
             self.vid_pid_content.set_text("-");
             self.serial_content.set_text("-");
-            self.state_content.set_text(&UsbipState::None.to_string());
-            self.description_content.set_text("No device selected");
+            self.state_content
+                .set_text(&UsbipState::None.to_localized_string(&t));
+            self.description_content
+                .set_text(t.get(keys::PLACEHOLDER_NO_DEVICE_SELECTED));
         }
+    }
+}
+
+impl Localizable for DeviceInfo {
+    fn re_localize(&self, t: &Translator) {
+        // Static labels only; dynamic values are repainted by `update`, which
+        // the parent tab invokes immediately after this through
+        // `update_device_details`.
+        self.device_info.set_text(t.get(keys::INFO_DEVICE_TITLE));
+        self.bus_id
+            .set_text(t.get(keys::INFO_DEVICE_BUS_ID_LABEL));
+        self.vid_pid
+            .set_text(t.get(keys::INFO_DEVICE_VID_PID_LABEL));
+        self.serial
+            .set_text(t.get(keys::INFO_DEVICE_SERIAL_LABEL));
+        self.state.set_text(t.get(keys::INFO_DEVICE_STATE_LABEL));
+        self.description
+            .set_text(t.get(keys::INFO_DEVICE_DESCRIPTION_LABEL));
     }
 }
 
@@ -72,6 +109,10 @@ impl PartialUi for DeviceInfo {
     ) -> Result<(), nwg::NwgError> {
         let parent = parent.map(|p| p.into());
         let parent_ref = parent.as_ref();
+
+        // Initial English text; the real language is applied by `re_localize`
+        // once the parent injects the active translator.
+        let t = Translator::default();
 
         // Resources
         nwg::Font::builder()
@@ -88,7 +129,7 @@ impl PartialUi for DeviceInfo {
 
         // Controls (all parented to parent_ref)
         nwg::Label::builder()
-            .text("Device Info")
+            .text(t.get(keys::INFO_DEVICE_TITLE))
             .font(Some(&data.font_bold_big))
             .parent(parent_ref.unwrap())
             .build(&mut data.device_info)?;
@@ -98,7 +139,7 @@ impl PartialUi for DeviceInfo {
             .build(&mut data.separator)?;
 
         nwg::Label::builder()
-            .text("Bus ID:")
+            .text(t.get(keys::INFO_DEVICE_BUS_ID_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -109,7 +150,7 @@ impl PartialUi for DeviceInfo {
             .build(&mut data.bus_id_content)?;
 
         nwg::Label::builder()
-            .text("VID:PID:")
+            .text(t.get(keys::INFO_DEVICE_VID_PID_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -120,7 +161,7 @@ impl PartialUi for DeviceInfo {
             .build(&mut data.vid_pid_content)?;
 
         nwg::Label::builder()
-            .text("Serial number:")
+            .text(t.get(keys::INFO_DEVICE_SERIAL_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -131,7 +172,7 @@ impl PartialUi for DeviceInfo {
             .build(&mut data.serial_content)?;
 
         nwg::Label::builder()
-            .text("State:")
+            .text(t.get(keys::INFO_DEVICE_STATE_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())
@@ -142,7 +183,7 @@ impl PartialUi for DeviceInfo {
             .build(&mut data.state_content)?;
 
         nwg::Label::builder()
-            .text("Description:")
+            .text(t.get(keys::INFO_DEVICE_DESCRIPTION_LABEL))
             .font(Some(&data.font_bold))
             .v_align(nwg::VTextAlign::Bottom)
             .parent(parent_ref.unwrap())

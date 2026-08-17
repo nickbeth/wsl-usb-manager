@@ -11,7 +11,11 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 
 use super::persisted_info::PersistedInfo;
 use crate::gui::RESOURCES;
-use crate::gui::{main_window::GuiTab, nwg_ext::MenuItemEx};
+use crate::gui::{
+    main_window::GuiTab,
+    nwg_ext::{ListViewExt, MenuItemEx},
+};
+use crate::i18n::{Localizable, Translator, keys};
 use crate::usbipd::{self, UsbDevice};
 
 const PADDING_LEFT: Rect<D> = Rect {
@@ -27,6 +31,10 @@ const DETAILS_PANEL_PADDING: u32 = 4;
 #[derive(Default)]
 pub struct PersistedTab {
     window: Cell<nwg::ControlHandle>,
+
+    /// Active translator snapshot. Injected by the main window on init and on
+    /// every language switch.
+    translator: RefCell<Rc<Translator>>,
 
     persisted_devices: RefCell<Vec<usbipd::UsbDevice>>,
 
@@ -52,9 +60,10 @@ pub struct PersistedTab {
 
 impl PersistedTab {
     fn init_list(&self) {
+        let t = self.translator.borrow().clone();
         let dv = &self.list_view;
         dv.clear();
-        dv.insert_column("Device");
+        dv.insert_column(t.get(keys::LIST_PERSISTED_DEVICE));
         dv.set_headers_enabled(true);
 
         // Auto-size before adding items to ensure we don't overflow the list view
@@ -63,6 +72,7 @@ impl PersistedTab {
 
     /// Clears the device list and reloads it with the provided persisted devices.
     fn refresh_list(&self, devices: &[usbipd::UsbDevice]) {
+        let t = self.translator.borrow().clone();
         *self.persisted_devices.borrow_mut() = devices
             .iter()
             .filter(|d| !d.is_connected())
@@ -71,10 +81,15 @@ impl PersistedTab {
 
         self.list_view.clear();
         for device in self.persisted_devices.borrow().iter() {
-            self.list_view.insert_items_row(
-                None,
-                &[device.description.as_deref().unwrap_or("Unknown device")],
-            );
+            // Description fallback may come from the translator (distinct
+            // lifetime from the device borrow), so resolve it to an owned
+            // `String` before borrowing for the row.
+            let description = device
+                .description
+                .clone()
+                .unwrap_or_else(|| t.get(keys::PLACEHOLDER_UNKNOWN_DEVICE).to_owned());
+            self.list_view
+                .insert_items_row(None, &[description.as_str()]);
         }
     }
 
@@ -118,6 +133,7 @@ impl PersistedTab {
     /// If an error occurs, an error dialog is shown.
     fn run_command(&self, command: fn(&UsbDevice) -> Result<(), String>) {
         let window = self.window.get();
+        let t = self.translator.borrow().clone();
 
         let wait_cursor = nwg::Cursor::from_system(nwg::OemCursor::Wait);
         let cursor_event =
@@ -144,7 +160,7 @@ impl PersistedTab {
         };
 
         if let Err(err) = result {
-            nwg::modal_error_message(window, "WSL USB Manager: Command Error", &err);
+            nwg::modal_error_message(window, t.get(keys::DIALOG_TITLE_COMMAND_ERROR), &err);
         }
 
         self.refresh();
@@ -166,6 +182,28 @@ impl PersistedTab {
     }
 }
 
+impl Localizable for PersistedTab {
+    fn re_localize(&self, t: &Translator) {
+        // ListView header
+        self.list_view
+            .set_header_text(0, t.get(keys::LIST_PERSISTED_DEVICE));
+
+        // Detail panel static labels
+        self.persisted_info.re_localize(t);
+
+        // Context menu item
+        self.menu_delete.set_text(t.get(keys::MENU_DEVICE_DELETE));
+
+        // Button
+        self.delete_button.set_text(t.get(keys::BUTTON_DELETE));
+
+        // Repaint dynamic rows so descriptions follow the new language.
+        let devices = self.persisted_devices.borrow().clone();
+        self.refresh_list(&devices);
+        self.update_persisted_details();
+    }
+}
+
 impl GuiTab for PersistedTab {
     fn init(&self, window: &Rc<nwg::Window>) {
         self.window.set(window.handle);
@@ -182,6 +220,11 @@ impl GuiTab for PersistedTab {
         let devices = usbipd::list_devices();
         self.refresh_with_devices(&devices);
     }
+
+    fn set_translator(&self, t: Rc<Translator>) {
+        *self.translator.borrow_mut() = t.clone();
+        self.persisted_info.set_translator(t);
+    }
 }
 
 impl PartialUi for PersistedTab {
@@ -191,6 +234,10 @@ impl PartialUi for PersistedTab {
     ) -> Result<(), nwg::NwgError> {
         let parent = parent.map(|p| p.into());
         let parent_ref = parent.as_ref();
+
+        // Initial English text; the active language is applied by `re_localize`
+        // once the main window injects the translator.
+        let t = Translator::default();
 
         // Controls
         nwg::ListView::builder()
@@ -221,18 +268,18 @@ impl PartialUi for PersistedTab {
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Delete")
+            .text(t.get(keys::BUTTON_DELETE))
             .build(&mut data.delete_button)?;
 
         nwg::Menu::builder()
-            .text("Device")
+            .text(t.get(keys::MENU_DEVICE_LABEL))
             .popup(true)
             .parent(parent_ref.unwrap())
             .build(&mut data.menu)?;
 
         nwg::MenuItem::builder()
             .parent(&data.menu)
-            .text("Delete")
+            .text(t.get(keys::MENU_DEVICE_DELETE))
             .build(&mut data.menu_delete)?;
 
         // Build nested partial

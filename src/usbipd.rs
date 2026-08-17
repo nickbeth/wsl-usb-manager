@@ -12,6 +12,7 @@ use windows_sys::Win32::System::Threading::CREATE_NO_WINDOW;
 use windows_sys::Win32::UI::Shell::{SHELLEXECUTEINFOW, SHELLEXECUTEINFOW_0, ShellExecuteExW};
 use windows_sys::Win32::UI::WindowsAndMessaging::SW_HIDE;
 
+use crate::i18n::{keys, Translator};
 use crate::win_utils::get_last_error_string;
 
 /// The `usbipd` executable name.
@@ -44,6 +45,29 @@ impl Display for UsbipState {
                 }
             }
         }
+    }
+}
+
+impl UsbipState {
+    /// Localized rendering for the UI: base state key, plus the forced suffix
+    /// when applicable.
+    ///
+    /// The original [`Display`] impl is intentionally kept as an English-only
+    /// fallback for logs and diagnostics — it cannot reach a [`Translator`].
+    pub fn to_localized_string(&self, t: &Translator) -> String {
+        let base = match self {
+            UsbipState::None => t.get(keys::STATE_NOT_SHARED),
+            UsbipState::Persisted => t.get(keys::STATE_PERSISTED),
+            UsbipState::Shared(_) => t.get(keys::STATE_SHARED),
+            UsbipState::Attached(_) => t.get(keys::STATE_ATTACHED),
+        };
+        let forced = match self {
+            UsbipState::Shared(f) | UsbipState::Attached(f) if *f => {
+                t.get(keys::STATE_FORCED_SUFFIX)
+            }
+            _ => "",
+        };
+        format!("{base}{forced}")
     }
 }
 

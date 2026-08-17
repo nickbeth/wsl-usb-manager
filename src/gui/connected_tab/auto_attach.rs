@@ -13,6 +13,7 @@ use nwg::stretch::{
 use crate::{
     auto_attacher::AutoAttacher,
     gui::{RESOURCES, helpers},
+    i18n::{Translator, keys},
     usbipd::UsbDevice,
 };
 
@@ -29,6 +30,10 @@ pub struct AutoAttachWindow {
     attach_mode: Cell<Option<AutoAttachMode>>,
     auto_attacher: Rc<RefCell<AutoAttacher>>,
 
+    /// Active translator snapshot at construction time. The dialog is short
+    /// lived, so it never needs to follow a live language switch.
+    translator: Rc<Translator>,
+
     pub window: nwg::Window,
     main_layout: nwg::FlexboxLayout,
 
@@ -44,10 +49,15 @@ pub struct AutoAttachWindow {
 }
 
 impl AutoAttachWindow {
-    pub fn new(device: UsbDevice, auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+    pub fn new(
+        device: UsbDevice,
+        auto_attacher: &Rc<RefCell<AutoAttacher>>,
+        translator: Rc<Translator>,
+    ) -> Self {
         Self {
             device,
             auto_attacher: auto_attacher.clone(),
+            translator,
             ..Default::default()
         }
     }
@@ -126,7 +136,7 @@ impl AutoAttachWindow {
             Err(e) => {
                 nwg::modal_error_message(
                     self.window.handle,
-                    "WSL USB Manager: Auto Attach Error",
+                    self.translator.get(keys::DIALOG_TITLE_AUTO_ATTACH_ERROR),
                     &e,
                 );
             }
@@ -148,16 +158,32 @@ impl AutoAttachWindow {
         mut data: Self,
         parent_window: &nwg::Window,
     ) -> Result<AutoAttachWindowUi, nwg::NwgError> {
+        let t = data.translator.clone();
         let description = data
             .device
             .description
-            .as_deref()
-            .unwrap_or("Unknown device");
-        let bus_id = data.device.bus_id.as_deref().unwrap_or("Unknown port");
+            .clone()
+            .unwrap_or_else(|| t.get(keys::PLACEHOLDER_UNKNOWN_DEVICE).to_owned());
+        let bus_id = data
+            .device
+            .bus_id
+            .clone()
+            .unwrap_or_else(|| t.get(keys::PLACEHOLDER_UNKNOWN_PORT).to_owned());
 
         // Truncate long descriptions
         const MAX_LENGTH: usize = 50;
-        let description = helpers::ellipsize_middle(description, MAX_LENGTH);
+        let description = helpers::ellipsize_middle(&description, MAX_LENGTH);
+
+        // Pre-render the option labels (need owned strings to outlive the
+        // builder calls, which borrow `data.window` etc.).
+        let device_label = t.getf(
+            keys::DIALOG_CONTENT_DEVICE_OPTION,
+            &[("description", &description)],
+        );
+        let port_label = t.getf(
+            keys::DIALOG_CONTENT_PORT_OPTION,
+            &[("bus_id", &bus_id)],
+        );
 
         // Compute centered position relative to parent window (DPI-aware)
         let child_size = (385, 176);
@@ -174,7 +200,7 @@ impl AutoAttachWindow {
             .parent(Some(parent_window.handle))
             .size(child_size)
             .position(position)
-            .title("Configure Auto Attach")
+            .title(t.get(keys::DIALOG_TITLE_CONFIGURE_AUTO_ATTACH))
             .icon(Some(&RESOURCES.app_icon))
             .build(&mut data.window)?;
 
@@ -182,19 +208,19 @@ impl AutoAttachWindow {
         nwg::Label::builder()
             .flags(nwg::LabelFlags::VISIBLE)
             .parent(&data.window)
-            .text("Select an auto attach mode:")
+            .text(t.get(keys::DIALOG_CONTENT_AUTO_ATTACH_MODE_PROMPT))
             .build(&mut data.label)?;
 
         nwg::RadioButton::builder()
             .flags(nwg::RadioButtonFlags::VISIBLE | nwg::RadioButtonFlags::GROUP)
             .parent(&data.window)
-            .text(&format!("Device: {}", description))
+            .text(&device_label)
             .build(&mut data.device_button)?;
 
         nwg::RadioButton::builder()
             .flags(nwg::RadioButtonFlags::VISIBLE)
             .parent(&data.window)
-            .text(&format!("Port: {}", bus_id))
+            .text(&port_label)
             .build(&mut data.port_button)?;
 
         nwg::Frame::builder()
@@ -204,12 +230,12 @@ impl AutoAttachWindow {
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("Cancel")
+            .text(t.get(keys::BUTTON_CANCEL))
             .build(&mut data.cancel_button)?;
 
         nwg::Button::builder()
             .parent(&data.buttons_frame)
-            .text("OK")
+            .text(t.get(keys::BUTTON_OK))
             .enabled(false) // Initially disabled until an option is selected
             .build(&mut data.ok_button)?;
 
