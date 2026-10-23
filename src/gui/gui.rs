@@ -9,6 +9,7 @@ use windows_sys::Win32::UI::Shell::SIID_SHIELD;
 use crate::{
     auto_attacher::AutoAttacher,
     gui::{nwg_ext::BitmapEx, tray::Tray},
+    nicknames::Nicknames,
 };
 
 #[derive(Default)]
@@ -46,6 +47,7 @@ pub const RESOURCES: LazyCell<GuiResources> = LazyCell::new(|| {
 /// This function will not return until the app is closed.
 pub fn start(
     auto_attacher: &Rc<RefCell<AutoAttacher>>,
+    nicknames: &Rc<RefCell<Nicknames>>,
     start_minimized: bool,
 ) -> Result<(), nwg::NwgError> {
     nwg::init()?;
@@ -58,7 +60,7 @@ pub fn start(
         .build(&mut font)?;
     nwg::Font::set_global_default(Some(font));
 
-    let _tray = Tray::build_ui(Tray::new(auto_attacher), start_minimized)?;
+    let _tray = Tray::build_ui(Tray::new(auto_attacher, nicknames), start_minimized)?;
 
     // Run the event loop
     nwg::dispatch_thread_events();

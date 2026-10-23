@@ -14,12 +14,14 @@ use crate::{
         RESOURCES, helpers,
         main_window::{MainWindow, MainWindowUi},
     },
+    nicknames::Nicknames,
     usbipd::{self, UsbDevice},
 };
 
 #[derive(Default)]
 pub struct Tray {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
+    nicknames: Rc<RefCell<Nicknames>>,
 
     window: nwg::MessageWindow,
     menu_tray_event_handler: Cell<Option<nwg::EventHandler>>,
@@ -30,16 +32,20 @@ pub struct Tray {
 }
 
 impl Tray {
-    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+    pub fn new(
+        auto_attacher: &Rc<RefCell<AutoAttacher>>,
+        nicknames: &Rc<RefCell<Nicknames>>,
+    ) -> Self {
         Self {
             auto_attacher: auto_attacher.clone(),
+            nicknames: nicknames.clone(),
             ..Default::default()
         }
     }
 
     fn open(&self) {
         let main_window = self.main_window.get_or_init(|| {
-            MainWindow::build_ui(MainWindow::new(&self.auto_attacher))
+            MainWindow::build_ui(MainWindow::new(&self.auto_attacher, &self.nicknames))
                 .expect("Failed to create main window")
         });
 
@@ -78,10 +84,11 @@ impl Tray {
                 continue;
             }
 
-            // Get device name or fallback to "Unknown Device (bus_id)"
-            let device_name = device
-                .description
-                .as_deref()
+            // Get device nickname or name, or fallback to "Unknown Device (bus_id)"
+            let nicknames = self.nicknames.borrow();
+            let device_name = nicknames
+                .get(&device)
+                .or(device.description.as_deref())
                 .map(Cow::Borrowed)
                 .unwrap_or_else(|| {
                     let bus_id = device.bus_id.as_deref().unwrap_or("-");

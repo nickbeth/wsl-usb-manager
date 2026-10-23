@@ -4,6 +4,7 @@
 mod args;
 mod auto_attacher;
 mod gui;
+mod nicknames;
 mod usbipd;
 mod win_utils;
 
@@ -11,6 +12,7 @@ use std::{cell::RefCell, path::PathBuf, process::ExitCode, rc::Rc};
 
 use args::Args;
 use auto_attacher::AutoAttacher;
+use nicknames::Nicknames;
 
 fn main() -> ExitCode {
     // Ensure that all child processes are terminated when the main application exits
@@ -51,15 +53,21 @@ fn main() -> ExitCode {
             Err(_) => None,
         };
 
-    let auto_attacher = if let Some(mut path) = storage_path {
-        path.push("profiles.json");
-        AutoAttacher::with_storage(&path)
+    let auto_attacher = if let Some(path) = &storage_path {
+        AutoAttacher::with_storage(&path.join("profiles.json"))
     } else {
         AutoAttacher::new()
     };
     let auto_attacher_rc = Rc::new(RefCell::new(auto_attacher));
 
-    let start = gui::start(&auto_attacher_rc, args.minimized);
+    let nicknames = if let Some(path) = &storage_path {
+        Nicknames::with_storage(&path.join("nicknames.json"))
+    } else {
+        Nicknames::new()
+    };
+    let nicknames_rc = Rc::new(RefCell::new(nicknames));
+
+    let start = gui::start(&auto_attacher_rc, &nicknames_rc, args.minimized);
 
     if let Err(err) = start {
         gui::show_start_failure(&err.to_string());
