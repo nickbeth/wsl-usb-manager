@@ -13,10 +13,12 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE;
 use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 
 use super::device_info::DeviceInfo;
+use super::nickname::{NicknameWindow, NicknameWindowUi};
 use crate::gui::{
     RESOURCES, connected_tab::auto_attach::AutoAttachWindowUi, main_window::GuiTab,
     nwg_ext::MenuItemEx,
 };
+use crate::nicknames::Nicknames;
 use crate::usbipd::{self, UsbDevice, UsbipState};
 use crate::{auto_attacher::AutoAttacher, gui::connected_tab::auto_attach::AutoAttachWindow};
 
@@ -34,6 +36,8 @@ const DETAILS_PANEL_PADDING: u32 = 4;
 pub struct ConnectedTab {
     auto_attacher: Rc<RefCell<AutoAttacher>>,
     auto_attach_window: Cell<Option<Box<AutoAttachWindowUi>>>,
+    nicknames: Rc<RefCell<Nicknames>>,
+    nickname_window: Cell<Option<Box<NicknameWindowUi>>>,
 
     window: RefCell<Rc<nwg::Window>>,
 
@@ -70,12 +74,18 @@ pub struct ConnectedTab {
     menu_bind: nwg::MenuItem,
     menu_bind_force: nwg::MenuItem,
     menu_unbind: nwg::MenuItem,
+    menu_sep_nickname: nwg::MenuSeparator,
+    menu_set_nickname: nwg::MenuItem,
 }
 
 impl ConnectedTab {
-    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+    pub fn new(
+        auto_attacher: &Rc<RefCell<AutoAttacher>>,
+        nicknames: &Rc<RefCell<Nicknames>>,
+    ) -> Self {
         Self {
             auto_attacher: auto_attacher.clone(),
+            nicknames: nicknames.clone(),
             ..Default::default()
         }
     }
@@ -85,15 +95,25 @@ impl ConnectedTab {
         list.clear();
         list.insert_column("Bus ID");
         list.insert_column("State");
+        list.insert_column("Nickname");
         list.insert_column("Device");
         list.set_headers_enabled(true);
 
         // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
-        list.insert_items_row(None, &["-", &format!("{}  ", UsbipState::None), "Device"]);
+        list.insert_items_row(
+            None,
+            &[
+                "-",
+                &format!("{}  ", UsbipState::None),
+                "Nickname        ",
+                "Device",
+            ],
+        );
 
         list.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
         list.set_column_width(1, LVSCW_AUTOSIZE as isize);
-        list.set_column_width(2, LVSCW_AUTOSIZE_USEHEADER as isize);
+        list.set_column_width(2, LVSCW_AUTOSIZE as isize);
+        list.set_column_width(3, LVSCW_AUTOSIZE_USEHEADER as isize);
 
         // Clear the dummy row
         list.clear();
@@ -107,6 +127,7 @@ impl ConnectedTab {
             .cloned()
             .collect();
 
+        let nicknames = self.nicknames.borrow();
         self.list_view.clear();
         for device in self.connected_devices.borrow().iter() {
             self.list_view.insert_items_row(
@@ -114,6 +135,7 @@ impl ConnectedTab {
                 &[
                     device.bus_id.as_deref().unwrap_or("-"),
                     &device.state().to_string(),
+                    nicknames.get(device).unwrap_or("-"),
                     device.description.as_deref().unwrap_or("Unknown device"),
                 ],
             );
@@ -179,6 +201,10 @@ impl ConnectedTab {
         self.menu_bind.set_enabled(!is_bound);
         self.menu_bind_force.set_enabled(!is_bound);
         self.menu_unbind.set_enabled(is_bound);
+
+        // Only devices with a serial number can be identified reliably enough to be nicknamed
+        self.menu_set_nickname
+            .set_enabled(Nicknames::supports(device));
 
         // Show the UAC shield icon on menu items that require admin privileges
         let bitmap = if !is_bound {
@@ -306,6 +332,55 @@ impl ConnectedTab {
         // Store the auto attach window UI so that it doesn't get dropped immediately
         // Drops any old auto attach window in the process, if present
         self.auto_attach_window.set(Some(Box::new(ui)));
+    }
+
+    fn set_nickname(&self) {
+        let Some(selected_index) = self.list_view.selected_item() else {
+            return;
+        };
+
+        let devices = self.connected_devices.borrow();
+        let device = match devices.get(selected_index) {
+            Some(device) if Nicknames::supports(device) => device,
+            _ => return,
+        };
+
+        let Ok(mut ui) = NicknameWindow::build_ui(
+            NicknameWindow::new(device.clone(), &self.nicknames),
+            &self.window.borrow(),
+        ) else {
+            return;
+        };
+
+        // Prepare closure access to parent data
+        let parent_window = Rc::downgrade(&self.window.borrow());
+        let child_ui = Rc::downgrade(&ui.inner);
+        let connected_tab_notice = self.refresh_notice.sender();
+
+        let parent_handler =
+            nwg::full_bind_event_handler(&ui.window.handle, move |evt, _evt_data, handle| {
+                let Some(ui) = child_ui.upgrade() else {
+                    return;
+                };
+
+                let Some(parent_window) = parent_window.upgrade() else {
+                    return;
+                };
+
+                if evt == nwg::Event::OnWindowClose && handle == ui.window.handle {
+                    parent_window.set_enabled(true);
+                    connected_tab_notice.notice();
+                }
+            });
+
+        ui.default_handlers.push(parent_handler);
+
+        // Disable the parent window
+        self.window.borrow().set_enabled(false);
+
+        // Store the nickname window UI so that it doesn't get dropped immediately
+        // Drops any old nickname window in the process, if present
+        self.nickname_window.set(Some(Box::new(ui)));
     }
 
     /// Runs a `command` function on the currently selected device.
@@ -475,6 +550,15 @@ impl PartialUi for ConnectedTab {
             .text("Unbind")
             .build(&mut data.menu_unbind)?;
 
+        nwg::MenuSeparator::builder()
+            .parent(&data.menu)
+            .build(&mut data.menu_sep_nickname)?;
+
+        nwg::MenuItem::builder()
+            .parent(&data.menu)
+            .text("Set Nickname...")
+            .build(&mut data.menu_set_nickname)?;
+
         // Build nested partial
         DeviceInfo::build_partial(&mut data.device_info, Some(&data.device_info_frame))?;
 
@@ -577,6 +661,9 @@ impl PartialUi for ConnectedTab {
                 }
                 if handle == self.menu_unbind.handle {
                     ConnectedTab::unbind_device(self);
+                }
+                if handle == self.menu_set_nickname.handle {
+                    ConnectedTab::set_nickname(self);
                 }
             }
             _ => {}

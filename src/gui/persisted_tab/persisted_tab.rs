@@ -12,6 +12,7 @@ use windows_sys::Win32::UI::Controls::LVSCW_AUTOSIZE_USEHEADER;
 use super::persisted_info::PersistedInfo;
 use crate::gui::RESOURCES;
 use crate::gui::{main_window::GuiTab, nwg_ext::MenuItemEx};
+use crate::nicknames::Nicknames;
 use crate::usbipd::{self, UsbDevice};
 
 const PADDING_LEFT: Rect<D> = Rect {
@@ -26,6 +27,8 @@ const DETAILS_PANEL_PADDING: u32 = 4;
 
 #[derive(Default)]
 pub struct PersistedTab {
+    nicknames: Rc<RefCell<Nicknames>>,
+
     window: Cell<nwg::ControlHandle>,
 
     persisted_devices: RefCell<Vec<usbipd::UsbDevice>>,
@@ -51,14 +54,29 @@ pub struct PersistedTab {
 }
 
 impl PersistedTab {
+    pub fn new(nicknames: &Rc<RefCell<Nicknames>>) -> Self {
+        Self {
+            nicknames: nicknames.clone(),
+            ..Default::default()
+        }
+    }
+
     fn init_list(&self) {
         let dv = &self.list_view;
         dv.clear();
+        dv.insert_column("Nickname");
         dv.insert_column("Device");
         dv.set_headers_enabled(true);
 
+        // Insert a dummy row, with max-width content in columns where AUTOSIZE is used
+        dv.insert_items_row(None, &["Nickname        ", "Device"]);
+
         // Auto-size before adding items to ensure we don't overflow the list view
         dv.set_column_width(0, LVSCW_AUTOSIZE_USEHEADER as isize);
+        dv.set_column_width(1, LVSCW_AUTOSIZE_USEHEADER as isize);
+
+        // Clear the dummy row
+        dv.clear();
     }
 
     /// Clears the device list and reloads it with the provided persisted devices.
@@ -69,11 +87,15 @@ impl PersistedTab {
             .cloned()
             .collect();
 
+        let nicknames = self.nicknames.borrow();
         self.list_view.clear();
         for device in self.persisted_devices.borrow().iter() {
             self.list_view.insert_items_row(
                 None,
-                &[device.description.as_deref().unwrap_or("Unknown device")],
+                &[
+                    nicknames.get(device).unwrap_or("-"),
+                    device.description.as_deref().unwrap_or("Unknown device"),
+                ],
             );
         }
     }

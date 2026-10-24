@@ -13,6 +13,7 @@ use super::nwg_ext::WindowEx;
 use super::persisted_tab::PersistedTab;
 use crate::{
     auto_attacher::AutoAttacher,
+    nicknames::Nicknames,
     win_utils::{self, DeviceNotification},
 };
 use crate::{gui::RESOURCES, usbipd::list_devices};
@@ -51,9 +52,13 @@ pub struct MainWindow {
 }
 
 impl MainWindow {
-    pub fn new(auto_attacher: &Rc<RefCell<AutoAttacher>>) -> Self {
+    pub fn new(
+        auto_attacher: &Rc<RefCell<AutoAttacher>>,
+        nicknames: &Rc<RefCell<Nicknames>>,
+    ) -> Self {
         Self {
-            connected_tab_content: ConnectedTab::new(auto_attacher),
+            connected_tab_content: ConnectedTab::new(auto_attacher, nicknames),
+            persisted_tab_content: PersistedTab::new(nicknames),
             auto_attach_tab_content: AutoAttachTab::new(auto_attacher),
             ..Default::default()
         }
